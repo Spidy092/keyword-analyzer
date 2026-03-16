@@ -21,6 +21,32 @@ const USER_AGENTS = [
 
 const getRandomUA = () => USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
 
+// ─── Location to Google GL/HL mapping ───
+const LOCATION_MAP = {
+    'india': { gl: 'in', hl: 'en', google: 'google.co.in' },
+    'united states': { gl: 'us', hl: 'en', google: 'google.com' },
+    'usa': { gl: 'us', hl: 'en', google: 'google.com' },
+    'united kingdom': { gl: 'uk', hl: 'en', google: 'google.co.uk' },
+    'uk': { gl: 'uk', hl: 'en', google: 'google.co.uk' },
+    'canada': { gl: 'ca', hl: 'en', google: 'google.ca' },
+    'australia': { gl: 'au', hl: 'en', google: 'google.com.au' },
+    'germany': { gl: 'de', hl: 'de', google: 'google.de' },
+    'france': { gl: 'fr', hl: 'fr', google: 'google.fr' },
+    'bengaluru': { gl: 'in', hl: 'en', google: 'google.co.in', uule: 'Bangalore' },
+    'bangalore': { gl: 'in', hl: 'en', google: 'google.co.in', uule: 'Bangalore' },
+    'mumbai': { gl: 'in', hl: 'en', google: 'google.co.in', uule: 'Mumbai' },
+    'delhi': { gl: 'in', hl: 'en', google: 'google.co.in', uule: 'Delhi' },
+    'chennai': { gl: 'in', hl: 'en', google: 'google.co.in', uule: 'Chennai' },
+    'hyderabad': { gl: 'in', hl: 'en', google: 'google.co.in', uule: 'Hyderabad' },
+    'kolkata': { gl: 'in', hl: 'en', google: 'google.co.in', uule: 'Kolkata' },
+    'pune': { gl: 'in', hl: 'en', google: 'google.co.in', uule: 'Pune' },
+};
+
+function getLocationConfig(location) {
+    const key = (location || 'india').toLowerCase();
+    return LOCATION_MAP[key] || { gl: 'in', hl: 'en', google: 'google.co.in' };
+}
+
 // ─── Search Volume Estimation ───
 async function estimateSearchVolume(keyword, location = 'India') {
     log.info({ keyword, location }, 'estimating search volume');
@@ -111,7 +137,8 @@ async function estimateViaSerper(keyword, location) {
 // ─── Estimate via Google Scraping ───
 async function estimateViaGoogle(keyword, location) {
     try {
-        const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(keyword)}&gl=in&hl=en&num=10`;
+        const loc = getLocationConfig(location);
+        const searchUrl = `https://www.${loc.google}/search?q=${encodeURIComponent(keyword)}&gl=${loc.gl}&hl=${loc.hl}&num=10`;
         
         const response = await axios.get(searchUrl, {
             headers: {
@@ -167,30 +194,83 @@ async function estimateViaGoogle(keyword, location) {
             }
         });
 
-        // Estimate volume based on results
+        // ─── IMPROVED Volume Estimation Algorithm ───
         let estimatedVolume = 0;
-        if (resultCount > 10000000) estimatedVolume = 8000 + Math.floor(Math.random() * 4000);
-        else if (resultCount > 1000000) estimatedVolume = 3000 + Math.floor(Math.random() * 2000);
-        else if (resultCount > 100000) estimatedVolume = 800 + Math.floor(Math.random() * 1000);
-        else if (resultCount > 10000) estimatedVolume = 300 + Math.floor(Math.random() * 400);
-        else estimatedVolume = 50 + Math.floor(Math.random() * 100);
+        
+        // Base volume from result count (logarithmic scale)
+        if (resultCount > 100000000) estimatedVolume = 50000;
+        else if (resultCount > 50000000) estimatedVolume = 30000;
+        else if (resultCount > 10000000) estimatedVolume = 15000;
+        else if (resultCount > 5000000) estimatedVolume = 8000;
+        else if (resultCount > 1000000) estimatedVolume = 4000;
+        else if (resultCount > 500000) estimatedVolume = 2000;
+        else if (resultCount > 100000) estimatedVolume = 1000;
+        else if (resultCount > 50000) estimatedVolume = 500;
+        else if (resultCount > 10000) estimatedVolume = 200;
+        else estimatedVolume = 50;
 
-        // Adjust for keyword length
+        // Adjust for keyword length (longer = less volume)
         const wordCount = keyword.split(' ').length;
-        if (wordCount > 4) estimatedVolume = Math.floor(estimatedVolume * 0.4);
-        else if (wordCount > 3) estimatedVolume = Math.floor(estimatedVolume * 0.6);
+        if (wordCount >= 5) estimatedVolume = Math.floor(estimatedVolume * 0.2);
+        else if (wordCount >= 4) estimatedVolume = Math.floor(estimatedVolume * 0.35);
+        else if (wordCount >= 3) estimatedVolume = Math.floor(estimatedVolume * 0.55);
+        else if (wordCount >= 2) estimatedVolume = Math.floor(estimatedVolume * 0.75);
 
-        // Check for ads
-        const adCount = $('div[data-text-ad], .uEierd, .commercial-unit-desktop-top').length;
+        // Adjust for commercial intent
+        const commercialTerms = ['buy', 'price', 'cost', 'cheap', 'best', 'top', 'review', 'vs', 'compare'];
+        const hasCommercialIntent = commercialTerms.some(t => keyword.toLowerCase().includes(t));
+        if (hasCommercialIntent) estimatedVolume = Math.floor(estimatedVolume * 1.3);
+
+        // Adjust for location modifiers
+        const locationTerms = ['near me', 'in bangalore', 'in mumbai', 'in delhi', 'in india', 'local'];
+        const hasLocationModifier = locationTerms.some(t => keyword.toLowerCase().includes(t));
+        if (hasLocationModifier) estimatedVolume = Math.floor(estimatedVolume * 0.6);
+
+        // Adjust for question keywords
+        const questionTerms = ['how', 'what', 'why', 'when', 'where', 'who', 'which'];
+        const isQuestion = questionTerms.some(t => keyword.toLowerCase().startsWith(t));
+        if (isQuestion) estimatedVolume = Math.floor(estimatedVolume * 0.7);
+
+        // Round to nice numbers
+        if (estimatedVolume > 10000) estimatedVolume = Math.round(estimatedVolume / 1000) * 1000;
+        else if (estimatedVolume > 1000) estimatedVolume = Math.round(estimatedVolume / 100) * 100;
+        else estimatedVolume = Math.round(estimatedVolume / 10) * 10;
+
+        // Check for ads (competition signal)
+        const adCount = $('div[data-text-ad], .uEierd, .commercial-unit-desktop-top, [data-text-ad]').length;
+        const hasShoppingResults = $('.commercial-unit-desktop-top, .sh-dgr__gr-auto').length > 0;
+        
         let competition = 'low';
-        if (adCount > 3) competition = 'high';
+        if (adCount > 3 || hasShoppingResults) competition = 'high';
         else if (adCount > 1) competition = 'medium';
+
+        // Estimate CPC based on competition
+        let cpc = 0;
+        if (competition === 'high') cpc = (1.5 + Math.random() * 2).toFixed(2);
+        else if (competition === 'medium') cpc = (0.5 + Math.random() * 1).toFixed(2);
+        else if (adCount > 0) cpc = (0.1 + Math.random() * 0.4).toFixed(2);
+
+        // Estimate difficulty based on SERP analysis
+        let difficulty = 30; // Base difficulty
+        
+        // Check for high-authority domains in top 10
+        const highAuthDomains = ['wikipedia.org', 'forbes.com', 'hubspot.com', 'semrush.com', 'ahrefs.com', 'youtube.com', 'linkedin.com'];
+        let highAuthCount = 0;
+        $('div.g a').each((i, el) => {
+            const href = $(el).attr('href') || '';
+            if (highAuthDomains.some(d => href.includes(d))) highAuthCount++;
+        });
+        
+        difficulty += highAuthCount * 8; // +8 per high-authority domain
+        difficulty += competition === 'high' ? 15 : competition === 'medium' ? 5 : 0;
+        difficulty += wordCount <= 2 ? 10 : 0; // Short keywords harder
+        difficulty = Math.min(100, Math.max(10, difficulty));
 
         return {
             volume: estimatedVolume,
             competition,
-            cpc: adCount > 0 ? (Math.random() * 1.5 + 0.3).toFixed(2) : 0,
-            difficulty: Math.min(100, 40 + Math.floor(Math.random() * 30)),
+            cpc: parseFloat(cpc),
+            difficulty,
             relatedSearches: [...new Set(relatedSearches)].slice(0, 8),
             resultCount,
         };
@@ -264,11 +344,12 @@ async function getSERPViaSerper(keyword, location, numResults) {
 async function getSERPViaGoogle(keyword, location, numResults) {
     const results = [];
     const pages = Math.ceil(numResults / 10);
+    const loc = getLocationConfig(location);
 
     for (let page = 0; page < pages; page++) {
         try {
             const start = page * 10;
-            const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(keyword)}&gl=in&hl=en&num=10&start=${start}`;
+            const searchUrl = `https://www.${loc.google}/search?q=${encodeURIComponent(keyword)}&gl=${loc.gl}&hl=${loc.hl}&num=10&start=${start}`;
             
             const response = await axios.get(searchUrl, {
                 headers: {
@@ -313,10 +394,23 @@ async function analyzePageContent(url, keyword) {
     log.info({ url, keyword }, 'analyzing page content');
 
     try {
+        // Validate URL
+        if (!url || !url.startsWith('http')) {
+            throw new Error('Invalid URL: ' + url);
+        }
+
         const response = await axios.get(url, {
-            headers: { 'User-Agent': getRandomUA() },
-            timeout: 15000,
-            maxRedirects: 5,
+            headers: { 
+                'User-Agent': getRandomUA(),
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
+            },
+            timeout: 20000,
+            maxRedirects: 10,
+            validateStatus: (status) => status < 500, // Accept 4xx but not 5xx
+            httpsAgent: new (require('https').Agent)({ 
+                rejectUnauthorized: false // Allow self-signed certs
+            }),
         });
 
         const $ = cheerio.load(response.data);
@@ -460,10 +554,11 @@ async function getKeywordSuggestions(seed, location = 'India') {
     log.info({ seed, location }, 'getting keyword suggestions');
 
     const suggestions = [];
+    const loc = getLocationConfig(location);
 
     try {
         // Method 1: Google Autocomplete (Firefox client)
-        const autocompleteUrl = `https://suggestqueries.google.com/complete/search?client=firefox&hl=en&gl=in&q=${encodeURIComponent(seed)}`;
+        const autocompleteUrl = `https://suggestqueries.google.com/complete/search?client=firefox&hl=${loc.hl}&gl=${loc.gl}&q=${encodeURIComponent(seed)}`;
         
         const response = await axios.get(autocompleteUrl, {
             headers: { 
@@ -493,7 +588,7 @@ async function getKeywordSuggestions(seed, location = 'India') {
 
     try {
         // Method 2: Google SERP Related Searches (scraping)
-        const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(seed)}&gl=in&hl=en`;
+        const searchUrl = `https://www.${loc.google}/search?q=${encodeURIComponent(seed)}&gl=${loc.gl}&hl=${loc.hl}`;
         const serpResponse = await axios.get(searchUrl, {
             headers: { 'User-Agent': getRandomUA() },
             timeout: 10000,

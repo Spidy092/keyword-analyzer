@@ -233,6 +233,28 @@ async function keywordRoutes(fastify, options) {
             return reply.code(500).send({ error: err.message });
         }
     });
+
+    // ─── Get Dashboard Stats ───
+    fastify.get('/api/stats', async (request, reply) => {
+        try {
+            const [keywords, competitors, alerts, rankings] = await Promise.all([
+                db.query('SELECT COUNT(*) as total FROM keywords'),
+                db.query('SELECT COUNT(DISTINCT domain) as total FROM competitors'),
+                db.query('SELECT COUNT(*) as total FROM alerts WHERE is_read = FALSE'),
+                db.query('SELECT COUNT(*) as total FROM domain_rankings WHERE rank_position <= 10'),
+            ]);
+
+            return {
+                totalKeywords: parseInt(keywords.rows[0].total),
+                totalCompetitors: parseInt(competitors.rows[0].total),
+                unreadAlerts: parseInt(alerts.rows[0].total),
+                topRankings: parseInt(rankings.rows[0].total),
+            };
+        } catch (err) {
+            log.error({ err: err.message }, 'failed to get stats');
+            return reply.code(500).send({ error: err.message });
+        }
+    });
 }
 
 module.exports = keywordRoutes;

@@ -98,24 +98,28 @@ async function api(endpoint, options = {}) {
 // ─── Dashboard ───
 async function loadDashboard() {
     try {
-        // Load keywords
+        // Load stats from dedicated endpoint
+        const stats = await api('/api/stats');
+        $('#totalKeywords').textContent = stats.totalKeywords || 0;
+        $('#totalCompetitors').textContent = stats.totalCompetitors || 0;
+        $('#activeAlerts').textContent = stats.unreadAlerts || 0;
+        $('#topRankings').textContent = stats.topRankings || 0;
+
+        // Load recent keywords
         const keywordsData = await api('/api/keywords?limit=5');
         renderRecentKeywords(keywordsData.keywords || []);
 
-        // Load alerts
+        // Load recent alerts
         const alertsData = await api('/api/alerts?limit=5');
         renderRecentAlerts(alertsData.alerts || []);
 
-        // Update stats
-        $('#totalKeywords').textContent = keywordsData.total || 0;
-        $('#activeAlerts').textContent = alertsData.unreadCount || 0;
-
-        // Load competitors count
-        const competitorsData = await api('/api/competitors/top?limit=1');
-        $('#totalCompetitors').textContent = competitorsData.total || 0;
-
     } catch (err) {
         console.error('Dashboard load failed:', err);
+        // Show error state
+        $('#totalKeywords').textContent = '-';
+        $('#activeAlerts').textContent = '-';
+        $('#totalCompetitors').textContent = '-';
+        $('#topRankings').textContent = '-';
     }
 }
 
