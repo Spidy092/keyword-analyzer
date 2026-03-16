@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %></title>
+    <link rel="stylesheet" href="/public/css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- Sidebar -->
+    <nav class="sidebar">
+        <div class="sidebar-header">
+            <div class="logo">
+                <i class="fas fa-search-dollar"></i>
+                <span>Keyword Analyzer</span>
+            </div>
+        </div>
+        <ul class="nav-menu">
+            <li class="nav-item active" data-page="dashboard">
+                <i class="fas fa-chart-line"></i>
+                <span>Dashboard</span>
+            </li>
+            <li class="nav-item" data-page="research">
+                <i class="fas fa-search"></i>
+                <span>Keyword Research</span>
+            </li>
+            <li class="nav-item" data-page="competitors">
+                <i class="fas fa-users"></i>
+                <span>Competitors</span>
+            </li>
+            <li class="nav-item" data-page="analysis">
+                <i class="fas fa-balance-scale"></i>
+                <span>Compare & Analyze</span>
+            </li>
+            <li class="nav-item" data-page="tracking">
+                <i class="fas fa-chart-bar"></i>
+                <span>Rank Tracking</span>
+            </li>
+            <li class="nav-item" data-page="alerts">
+                <i class="fas fa-bell"></i>
+                <span>Alerts</span>
+                <span class="badge" id="alertBadge">0</span>
+            </li>
+        </ul>
+        <div class="sidebar-footer">
+            <div class="version">v<%= version %></div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <button class="menu-toggle">
+                    <i class="fas fa-bars"></i>
+                </button>
+                <h1 id="pageTitle">Dashboard</h1>
+            </div>
+            <div class="header-right">
+                <div class="search-box">
+                    <i class="fas fa-search"></i>
+                    <input type="text" placeholder="Search keywords..." id="globalSearch">
+                </div>
+            </div>
+        </header>
+
+        <!-- Pages -->
+        <div class="content">
+            <!-- Dashboard Page -->
+            <div class="page active" id="page-dashboard">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon blue">
+                            <i class="fas fa-key"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3 id="totalKeywords">0</h3>
+                            <p>Keywords Tracked</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon green">
+                            <i class="fas fa-trophy"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3 id="topRankings">0</h3>
+                            <p>Top 10 Rankings</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon orange">
+                            <i class="fas fa-users"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3 id="totalCompetitors">0</h3>
+                            <p>Competitors Found</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon red">
+                            <i class="fas fa-exclamation-triangle"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3 id="activeAlerts">0</h3>
+                            <p>Active Alerts</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dashboard-grid">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Recent Keywords</h3>
+                            <a href="#" class="view-all" data-page="research">View All</a>
+                        </div>
+                        <div class="card-body">
+                            <table class="data-table" id="recentKeywordsTable">
+                                <thead>
+                                    <tr>
+                                        <th>Keyword</th>
+                                        <th>Volume</th>
+                                        <th>Competition</th>
+                                        <th>Difficulty</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Recent Alerts</h3>
+                            <a href="#" class="view-all" data-page="alerts">View All</a>
+                        </div>
+                        <div class="card-body">
+                            <div class="alerts-list" id="recentAlertsList"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Keyword Research Page -->
+            <div class="page" id="page-research">
+                <div class="research-container">
+                    <div class="research-form card">
+                        <h3>🔍 Keyword Research</h3>
+                        <div class="form-group">
+                            <label>Enter Keyword</label>
+                            <input type="text" id="keywordInput" placeholder="e.g., web design company in bengaluru">
+                        </div>
+                        <div class="form-group">
+                            <label>Location (Optional)</label>
+                            <select id="locationInput">
+                                <option value="India">India</option>
+                                <option value="United States">United States</option>
+                                <option value="United Kingdom">United Kingdom</option>
+                                <option value="Canada">Canada</option>
+                                <option value="Australia">Australia</option>
+                                <option value="Bengaluru">Bengaluru</option>
+                                <option value="Mumbai">Mumbai</option>
+                                <option value="Delhi">Delhi</option>
+                                <option value="Chennai">Chennai</option>
+                                <option value="Hyderabad">Hyderabad</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-primary" id="researchBtn">
+                            <i class="fas fa-search"></i> Research
+                        </button>
+                    </div>
+
+                    <div class="research-results" id="researchResults" style="display: none;">
+                        <div class="keyword-overview card">
+                            <h3>📊 Keyword Overview</h3>
+                            <div class="overview-grid">
+                                <div class="overview-item">
+                                    <span class="label">Search Volume</span>
+                                    <span class="value" id="searchVolume">-</span>
+                                </div>
+                                <div class="overview-item">
+                                    <span class="label">Competition</span>
+                                    <span class="value" id="competition">-</span>
+                                </div>
+                                <div class="overview-item">
+                                    <span class="label">CPC</span>
+                                    <span class="value" id="cpc">-</span>
+                                </div>
+                                <div class="overview-item">
+                                    <span class="label">Difficulty</span>
+                                    <span class="value" id="difficulty">-</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="competitors-table card">
+                            <div class="card-header">
+                                <h3>🏆 Ranking Pages</h3>
+                                <span class="badge" id="competitorCount">0</span>
+                            </div>
+                            <div class="card-body">
+                                <table class="data-table" id="competitorsTable">
+                                    <thead>
+                                        <tr>
+                                            <th>#</th>
+                                            <th>Domain</th>
+                                            <th>Title</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="related-searches card">
+                            <h3>🔗 Related Searches</h3>
+                            <div class="tags" id="relatedSearches"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Competitors Page -->
+            <div class="page" id="page-competitors">
+                <div class="competitors-container">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>🏆 Top Competitors</h3>
+                        </div>
+                        <div class="card-body">
+                            <table class="data-table" id="topCompetitorsTable">
+                                <thead>
+                                    <tr>
+                                        <th>Domain</th>
+                                        <th>Keywords</th>
+                                        <th>Avg Position</th>
+                                        <th>Best Position</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="competitor-detail card" id="competitorDetail" style="display: none;">
+                        <div class="card-header">
+                            <h3 id="competitorDomain">-</h3>
+                            <button class="btn btn-sm" id="closeCompetitorDetail">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div class="detail-stats">
+                                <div class="stat">
+                                    <span class="label">Domain Authority</span>
+                                    <span class="value" id="competitorDA">-</span>
+                                </div>
+                                <div class="stat">
+                                    <span class="label">Total Keywords</span>
+                                    <span class="value" id="competitorKeywords">-</span>
+                                </div>
+                            </div>
+                            <h4>Ranking Keywords</h4>
+                            <table class="data-table" id="competitorRankingsTable">
+                                <thead>
+                                    <tr>
+                                        <th>Keyword</th>
+                                        <th>Position</th>
+                                        <th>Search Volume</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Analysis Page -->
+            <div class="page" id="page-analysis">
+                <div class="analysis-container">
+                    <div class="analysis-form card">
+                        <h3>⚖️ Compare & Analyze</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Your Domain</label>
+                                <input type="text" id="myDomainInput" placeholder="yourdomain.com">
+                            </div>
+                            <div class="form-group">
+                                <label>Competitor Domain</label>
+                                <input type="text" id="competitorDomainInput" placeholder="competitor.com">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Your Page URL (Optional)</label>
+                                <input type="text" id="myUrlInput" placeholder="https://yourdomain.com/page">
+                            </div>
+                            <div class="form-group">
+                                <label>Competitor Page URL (Optional)</label>
+                                <input type="text" id="competitorUrlInput" placeholder="https://competitor.com/page">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Target Keyword</label>
+                            <input type="text" id="analysisKeywordInput" placeholder="web design company">
+                        </div>
+                        <button class="btn btn-primary" id="analyzeBtn">
+                            <i class="fas fa-balance-scale"></i> Compare & Analyze
+                        </button>
+                    </div>
+
+                    <div class="analysis-results" id="analysisResults" style="display: none;">
+                        <div class="comparison-overview card">
+                            <h3>📊 Comparison Overview</h3>
+                            <div class="comparison-grid" id="comparisonGrid"></div>
+                        </div>
+
+                        <div class="why-ranking card">
+                            <h3>🎯 Why Competitor Ranks Higher</h3>
+                            <div class="reasons-list" id="reasonsList"></div>
+                        </div>
+
+                        <div class="suggestions card">
+                            <h3>💡 Improvement Suggestions</h3>
+                            <div class="suggestions-list" id="suggestionsList"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Rank Tracking Page -->
+            <div class="page" id="page-tracking">
+                <div class="tracking-container">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>📈 Track Your Domain</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-inline">
+                                <input type="text" id="trackDomainInput" placeholder="yourdomain.com">
+                                <button class="btn btn-primary" id="trackDomainBtn">
+                                    <i class="fas fa-plus"></i> Add Domain
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>📊 Tracked Domains</h3>
+                        </div>
+                        <div class="card-body">
+                            <table class="data-table" id="trackedDomainsTable">
+                                <thead>
+                                    <tr>
+                                        <th>Domain</th>
+                                        <th>Keywords</th>
+                                        <th>Improved</th>
+                                        <th>Dropped</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>📉 Rank History</h3>
+                        </div>
+                        <div class="card-body">
+                            <table class="data-table" id="rankHistoryTable">
+                                <thead>
+                                    <tr>
+                                        <th>Keyword</th>
+                                        <th>Domain</th>
+                                        <th>Previous</th>
+                                        <th>Current</th>
+                                        <th>Change</th>
+                                        <th>Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Alerts Page -->
+            <div class="page" id="page-alerts">
+                <div class="alerts-container">
+                    <div class="alerts-header card">
+                        <div class="card-header">
+                            <h3>🚨 Rank Drop Alerts</h3>
+                            <button class="btn btn-sm" id="markAllReadBtn">
+                                <i class="fas fa-check-double"></i> Mark All Read
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="alerts-filter">
+                        <button class="filter-btn active" data-filter="all">All</button>
+                        <button class="filter-btn" data-filter="rank_drop">Rank Drops</button>
+                        <button class="filter-btn" data-filter="rank_improvement">Improvements</button>
+                        <button class="filter-btn" data-filter="new_ranking">New Rankings</button>
+                        <button class="filter-btn" data-filter="lost_ranking">Lost Rankings</button>
+                    </div>
+
+                    <div class="alerts-list-full" id="alertsListFull"></div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Competitor Analysis Modal -->
+    <div class="modal" id="competitorAnalysisModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>📊 Page Analysis</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body" id="competitorAnalysisContent"></div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner"></div>
+        <p>Analyzing...</p>
+    </div>
+
+    <script src="/public/js/app.js"></script>
+</body>
+</html>
