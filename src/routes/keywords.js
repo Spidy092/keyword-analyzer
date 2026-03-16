@@ -65,6 +65,9 @@ async function keywordRoutes(fastify, options) {
                     );
                 }
 
+                // Get additional keyword suggestions
+                const suggestions = await keywordService.getKeywordSuggestions(keyword, location);
+
                 return {
                     success: true,
                     keyword: {
@@ -75,8 +78,13 @@ async function keywordRoutes(fastify, options) {
                         competition: volumeData.competition,
                         cpc: volumeData.cpc,
                         difficulty: volumeData.difficulty,
-                        relatedSearches: volumeData.relatedSearches,
+                        relatedSearches: volumeData.relatedSearches || [],
                     },
+                    relatedKeywords: suggestions.map(s => ({
+                        keyword: s.keyword,
+                        type: s.type,
+                        source: s.source,
+                    })),
                     competitors: serpResults.map(r => ({
                         domain: r.domain,
                         position: r.position,
@@ -85,6 +93,7 @@ async function keywordRoutes(fastify, options) {
                         description: r.description,
                     })),
                     totalResults: serpResults.length,
+                    totalRelated: suggestions.length,
                 };
             } catch (err) {
                 log.error({ err: err.message }, 'keyword research failed');
@@ -181,12 +190,35 @@ async function keywordRoutes(fastify, options) {
                     seed,
                     suggestions,
                     total: suggestions.length,
+                    byType: {
+                        autocomplete: suggestions.filter(s => s.type === 'autocomplete'),
+                        related: suggestions.filter(s => s.type === 'related'),
+                        questions: suggestions.filter(s => s.type === 'question'),
+                    },
                 };
             } catch (err) {
                 log.error({ err: err.message }, 'suggestions failed');
                 return reply.code(500).send({ error: err.message });
             }
         },
+    });
+
+    // ─── Get Related Keywords (Quick) ───
+    fastify.get('/api/keywords/related/:keyword', async (request, reply) => {
+        const { keyword } = request.params;
+
+        try {
+            const suggestions = await keywordService.getKeywordSuggestions(keyword, 'India');
+
+            return {
+                keyword,
+                related: suggestions.map(s => s.keyword),
+                total: suggestions.length,
+            };
+        } catch (err) {
+            log.error({ err: err.message }, 'related keywords failed');
+            return reply.code(500).send({ error: err.message });
+        }
     });
 
     // ─── Delete Keyword ───

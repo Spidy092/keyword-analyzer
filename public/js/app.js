@@ -210,11 +210,25 @@ function renderResearchResults(data) {
         </tr>
     `).join('');
 
-    // Related searches
+    // Related searches - combine from multiple sources
     const relatedContainer = $('#relatedSearches');
-    relatedContainer.innerHTML = (data.keyword.relatedSearches || []).map(rs => 
-        `<span class="tag" onclick="searchRelated('${rs}')">${rs}</span>`
-    ).join('');
+    const allRelated = [
+        ...(data.keyword.relatedSearches || []),
+        ...(data.relatedKeywords || []).map(r => r.keyword),
+    ];
+    const uniqueRelated = [...new Set(allRelated)];
+    
+    relatedContainer.innerHTML = uniqueRelated.length > 0 
+        ? uniqueRelated.map(rs => 
+            `<span class="tag" onclick="searchRelated('${rs.replace(/'/g, "\\'")}')">${rs}</span>`
+          ).join('')
+        : '<span class="text-muted">No related searches found</span>';
+    
+    // Update related count
+    const relatedCount = $('#relatedCount');
+    if (relatedCount) {
+        relatedCount.textContent = uniqueRelated.length;
+    }
 }
 
 function searchRelated(keyword) {

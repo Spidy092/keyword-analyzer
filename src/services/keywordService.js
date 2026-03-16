@@ -128,12 +128,42 @@ async function estimateViaGoogle(keyword, location) {
         const resultMatch = resultStats.match(/[\d,]+/);
         const resultCount = resultMatch ? parseInt(resultMatch[0].replace(/,/g, '')) : 0;
 
-        // Extract related searches
+        // Extract related searches (multiple methods)
         const relatedSearches = [];
-        $('div[data-ved] a[href*="search?q="]').each((i, el) => {
+        
+        // Method 1: Links in related searches section
+        $('a[href*="/search?q="]').each((i, el) => {
+            const href = $(el).attr('href') || '';
             const text = $(el).text().trim();
-            if (text && text.length > 3 && text.length < 100) {
-                relatedSearches.push(text);
+            
+            if (href.includes('/search?q=') && 
+                text.length > 3 && 
+                text.length < 100 &&
+                !text.includes('http') &&
+                !text.includes('Search') &&
+                !text.includes('Next')) {
+                
+                const match = href.match(/\/search\?q=([^&]+)/);
+                if (match) {
+                    const query = decodeURIComponent(match[1].replace(/\+/g, ' '));
+                    if (!relatedSearches.includes(query)) {
+                        relatedSearches.push(query);
+                    }
+                }
+            }
+        });
+
+        // Method 2: Look for "People also search for" section
+        $('span').each((i, el) => {
+            const text = $(el).text().trim();
+            if (text.length > 5 && text.length < 80 && 
+                !text.includes('http') && 
+                !relatedSearches.includes(text)) {
+                // Check if parent is a related search container
+                const parent = $(el).parent();
+                if (parent.attr('data-ved') || parent.hasClass('k8XOCe')) {
+                    relatedSearches.push(text);
+                }
             }
         });
 
@@ -429,32 +459,134 @@ function extractDomain(url) {
 async function getKeywordSuggestions(seed, location = 'India') {
     log.info({ seed, location }, 'getting keyword suggestions');
 
+    const suggestions = [];
+
     try {
-        // Google Autocomplete
+        // Method 1: Google Autocomplete (Firefox client)
         const autocompleteUrl = `https://suggestqueries.google.com/complete/search?client=firefox&hl=en&gl=in&q=${encodeURIComponent(seed)}`;
         
         const response = await axios.get(autocompleteUrl, {
+            headers: { 
+                'User-Agent': getRandomUA(),
+                'Accept': 'application/json',
+            },
+            timeout: 5000,
+        });
+
+        // Parse autocomplete response
+        if (Array.isArray(response.data) && Array.isArray(response.data[1])) {
+            for (const s of response.data[1]) {
+                if (s && s.length > 3) {
+                    suggestions.push({
+                        keyword: s,
+                        type: 'autocomplete',
+                        source: 'google',
+                    });
+                }
+            }
+        }
+
+        log.info({ count: suggestions.length }, 'autocomplete suggestions found');
+    } catch (err) {
+        log.debug({ err: err.message }, 'autocomplete failed, trying alternatives');
+    }
+
+    try {
+        // Method 2: Google SERP Related Searches (scraping)
+        const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(seed)}&gl=in&hl=en`;
+        const serpResponse = await axios.get(searchUrl, {
+            headers: { 'User-Agent': getRandomUA() },
+            timeout: 10000,
+        });
+
+        const $ = cheerio.load(serpResponse.data);
+        
+        // Extract "Related searches" section
+        // Method A: Look for related search links
+        $('a[href*="/search?q="]').each((i, el) => {
+            const href = $(el).attr('href') || '';
+            const text = $(el).text().trim();
+            
+            // Filter for related searches (not navigation)
+            if (href.includes('/search?q=') && 
+                !href.includes('&sa=') && 
+                text.length > 3 && 
+                text.length < 100 &&
+                !text.includes('http')) {
+                
+                // Extract the query from href
+                const match = href.match(/\/search\?q=([^&]+)/);
+                if (match) {
+                    const query = decodeURIComponent(match[1].replace(/\+/g, ' '));
+                    if (!suggestions.find(s => s.keyword.toLowerCase() === query.toLowerCase())) {
+                        suggestions.push({
+                            keyword: query,
+                            type: 'related',
+                            source: 'google_serp',
+                        });
+                    }
+                }
+            }
+        });
+
+        // Method B: Look for "People also ask" questions
+        $('[data-q] , [jsname]').each((i, el) => {
+            const question = $(el).attr('data-q') || $(el).text().trim();
+            if (question && question.includes('?') && question.length > 10) {
+                if (!suggestions.find(s => s.keyword.toLowerCase() === question.toLowerCase())) {
+                    suggestions.push({
+                        keyword: question,
+                        type: 'question',
+                        source: 'paa',
+                    });
+                }
+            }
+        });
+
+        log.info({ count: suggestions.length }, 'total suggestions after SERP parsing');
+    } catch (err) {
+        log.debug({ err: err.message }, 'SERP related searches failed');
+    }
+
+    try {
+        // Method 3: Bing Suggestions (fallback)
+        const bingUrl = `https://api.bing.com/osjson.aspx?query=${encodeURIComponent(seed)}&lang=en`;
+        const bingResponse = await axios.get(bingUrl, {
             headers: { 'User-Agent': getRandomUA() },
             timeout: 5000,
         });
 
-        const suggestions = response.data?.[1] || [];
-        
-        // Also get related searches from SERP
-        const serpData = await estimateViaGoogle(seed, location);
-        const relatedSearches = serpData.relatedSearches || [];
+        if (Array.isArray(bingResponse.data) && Array.isArray(bingResponse.data[1])) {
+            for (const s of bingResponse.data[1]) {
+                if (s && s.length > 3 && !suggestions.find(existing => existing.keyword.toLowerCase() === s.toLowerCase())) {
+                    suggestions.push({
+                        keyword: s,
+                        type: 'autocomplete',
+                        source: 'bing',
+                    });
+                }
+            }
+        }
 
-        // Combine and deduplicate
-        const allSuggestions = [...new Set([...suggestions, ...relatedSearches])];
-
-        return allSuggestions.map(s => ({
-            keyword: s,
-            type: s.includes(seed) ? 'autocomplete' : 'related',
-        }));
+        log.info({ count: suggestions.length }, 'total suggestions after Bing');
     } catch (err) {
-        log.error({ err: err.message }, 'suggestions fetch failed');
-        return [];
+        log.debug({ err: err.message }, 'Bing suggestions failed');
     }
+
+    // Deduplicate and limit
+    const unique = [];
+    const seen = new Set();
+    
+    for (const s of suggestions) {
+        const key = s.keyword.toLowerCase();
+        if (!seen.has(key)) {
+            seen.add(key);
+            unique.push(s);
+        }
+    }
+
+    log.info({ seed, total: unique.length }, 'keyword suggestions complete');
+    return unique.slice(0, 20);
 }
 
 module.exports = {
