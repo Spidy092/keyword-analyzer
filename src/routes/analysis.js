@@ -314,6 +314,80 @@ async function analysisRoutes(fastify, options) {
             return reply.code(500).send({ error: err.message });
         }
     });
+
+    // ─── Multi-Competitor Analysis ───
+    fastify.post('/api/analysis/multi-competitor', {
+        schema: {
+            body: {
+                type: 'object',
+                required: ['domains', 'keyword'],
+                properties: {
+                    domains: { 
+                        type: 'array', 
+                        items: { type: 'string' },
+                        minItems: 2,
+                        maxItems: 10,
+                    },
+                    keyword: { type: 'string' },
+                    location: { type: 'string', default: 'India' },
+                },
+            },
+        },
+        handler: async (request, reply) => {
+            const { domains, keyword, location = 'India' } = request.body;
+
+            try {
+                log.info({ domains, keyword }, 'multi-competitor analysis');
+
+                const analysis = await analysisService.analyzeMultipleCompetitors(domains, keyword, location);
+
+                return {
+                    success: true,
+                    analysis,
+                };
+            } catch (err) {
+                log.error({ err: err.message }, 'multi-competitor analysis failed');
+                return reply.code(500).send({ error: err.message });
+            }
+        },
+    });
+
+    // ─── Competitor Gap Analysis ───
+    fastify.post('/api/analysis/gap-analysis', {
+        schema: {
+            body: {
+                type: 'object',
+                required: ['myDomain', 'competitorDomains', 'keyword'],
+                properties: {
+                    myDomain: { type: 'string' },
+                    competitorDomains: { 
+                        type: 'array', 
+                        items: { type: 'string' },
+                        minItems: 1,
+                        maxItems: 10,
+                    },
+                    keyword: { type: 'string' },
+                },
+            },
+        },
+        handler: async (request, reply) => {
+            const { myDomain, competitorDomains, keyword } = request.body;
+
+            try {
+                log.info({ myDomain, competitorDomains, keyword }, 'gap analysis');
+
+                const gapAnalysis = await analysisService.performGapAnalysis(myDomain, competitorDomains, keyword);
+
+                return {
+                    success: true,
+                    gapAnalysis,
+                };
+            } catch (err) {
+                log.error({ err: err.message }, 'gap analysis failed');
+                return reply.code(500).send({ error: err.message });
+            }
+        },
+    });
 }
 
 module.exports = analysisRoutes;

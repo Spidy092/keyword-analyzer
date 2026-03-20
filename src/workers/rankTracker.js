@@ -37,7 +37,7 @@ async function checkAllRankings(db) {
             for (const keyword of keywords) {
                 try {
                     await checkDomainRanking(db, domain, keyword);
-                    await new Promise(r => setTimeout(r, 3000)); // Rate limit
+                    await new Promise(r => setTimeout(r, config.rankTracking.rateLimitDelay));
                 } catch (err) {
                     log.error({ domain, keyword: keyword.keyword, err: err.message }, 'rank check failed');
                 }
@@ -116,7 +116,7 @@ async function checkDomainRanking(db, domain, keyword) {
         if (changeDirection === 'down' && previousPosition > 0) {
             const dropAmount = newPosition - previousPosition;
             
-            if (dropAmount >= 5) {
+            if (dropAmount >= config.rankTracking.rankDropThreshold) {
                 // Significant drop - create alert
                 await createAlert(db, {
                     domain,
@@ -140,7 +140,7 @@ async function checkDomainRanking(db, domain, keyword) {
         } else if (changeDirection === 'up' && previousPosition > 0) {
             const gainAmount = previousPosition - newPosition;
             
-            if (gainAmount >= 10) {
+            if (gainAmount >= config.rankTracking.rankImprovementThreshold) {
                 // Significant improvement
                 await createAlert(db, {
                     domain,
@@ -207,7 +207,7 @@ async function sendWebhookNotification(data) {
         };
 
         await axios.post(config.rankTracking.alertWebhook, message, {
-            timeout: 5000,
+            timeout: config.rankTracking.webhookTimeout,
         });
 
         log.info('webhook notification sent');
@@ -218,7 +218,9 @@ async function sendWebhookNotification(data) {
 
 // ─── Start Rank Tracker ───
 function startRankTracker(db) {
-    const intervalHours = config.rankTracking.checkInterval / 3600;
+    const { checkInterval } = config.rankTracking;
+    const intervalHours = checkInterval / 3600;
+    const intervalMinutes = checkInterval / 60;
     
     log.info({ intervalHours }, 'starting rank tracker');
 
@@ -229,16 +231,54 @@ function startRankTracker(db) {
         });
     }, 60000);
 
-    // Schedule periodic checks
-    // Run every 24 hours by default
-    cron.schedule('0 3 * * *', () => {
+    // Schedule periodic checks using configured interval
+    const cronExpression = getCronExpression(checkInterval);
+    cron.schedule(cronExpression, () => {
         log.info('scheduled rank check starting');
         checkAllRankings(db).catch(err => {
             log.error({ err: err.message }, 'scheduled rank check failed');
         });
     });
 
-    log.info('✅ rank tracker started (daily at 3 AM)');
+    log.info(`✅ rank tracker started (every ${formatInterval(checkInterval)})`);
+}
+
+// ─── Generate Cron Expression from Interval ───
+function getCronExpression(intervalSeconds) {
+    const hours = Math.floor(intervalSeconds / 3600);
+    
+    if (hours === 1) {
+        return '0 * * * *'; // Every hour
+    } else if (hours >= 24) {
+        return '0 3 * * *'; // Daily at 3 AM for 24+ hours
+    } else if (hours >= 12) {
+        return '0 */12 * * *'; // Every 12 hours
+    } else if (hours >= 6) {
+        return '0 */6 * * *'; // Every 6 hours
+    } else if (hours >= 4) {
+        return '0 */4 * * *'; // Every 4 hours
+    } else if (hours >= 2) {
+        return '0 */2 * * *'; // Every 2 hours
+    } else {
+        return '0 * * * *'; // Every hour as fallback
+    }
+}
+
+// ─── Format Interval for Display ───
+function formatInterval(seconds) {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    
+    if (hours >= 24 && hours % 24 === 0) {
+        const days = hours / 24;
+        return `${days} day${days > 1 ? 's' : ''}`;
+    } else if (hours > 0 && minutes > 0) {
+        return `${hours}h ${minutes}m`;
+    } else if (hours > 0) {
+        return `${hours} hour${hours > 1 ? 's' : ''}`;
+    } else {
+        return `${minutes} minute${minutes > 1 ? 's' : ''}`;
+    }
 }
 
 // ─── Manual Rank Check ───
@@ -266,7 +306,7 @@ async function manualRankCheck(db, domain) {
                 url: result?.url || null,
             });
 
-            await new Promise(r => setTimeout(r, 2000));
+            await new Promise(r => setTimeout(r, config.rankTracking.rateLimitDelay));
         } catch (err) {
             results.push({
                 keyword: keyword.keyword,

@@ -316,18 +316,52 @@ function generateSuggestions(scores, reasons, myPage, competitorPage) {
 
     // Schema markup
     if (!myPage?.seoElements?.hasSchema && competitorPage?.seoElements?.hasSchema) {
+        const compSchemaTypes = competitorPage.seoElements.schemaDetails?.detectedTypes || [];
+        const pageType = competitorPage.seoElements.pageType?.primary || 'WebPage';
+        
         suggestions.push({
             priority: 'MEDIUM',
             category: 'Technical SEO',
             action: 'Add schema markup (structured data)',
             details: [
-                'Add LocalBusiness schema if applicable',
-                'Add FAQ schema for question-based content',
-                'Add Article schema for blog posts',
-                'Use Google\'s Structured Data Testing Tool',
+                `Competitor uses: ${compSchemaTypes.join(', ') || 'schema markup'}`,
+                `Detected page type: ${pageType}`,
+                'Use Google\'s Rich Results Test to validate',
+                'Add matching schema to your page',
             ],
+            competitorSchemaTypes: compSchemaTypes,
+            pageType,
             estimatedImpact: 'Can get rich snippets in search results',
         });
+    }
+    
+    // Schema validation errors
+    if (myPage?.seoElements?.schemaDetails?.errors?.length > 0) {
+        suggestions.push({
+            priority: 'HIGH',
+            category: 'Technical SEO',
+            action: 'Fix schema markup errors',
+            details: myPage.seoElements.schemaDetails.errors.map(e => e.message),
+            estimatedImpact: 'Prevents schema-related indexing issues',
+        });
+    }
+    
+    // Schema suggestions based on content
+    if (myPage?.seoElements?.schemaSuggestions?.length > 0) {
+        const topSuggestion = myPage.seoElements.schemaSuggestions[0];
+        if (!myPage.seoElements.hasSchema) {
+            suggestions.push({
+                priority: topSuggestion.priority === 'CRITICAL' ? 'HIGH' : topSuggestion.priority,
+                category: 'Technical SEO',
+                action: `Add ${topSuggestion.type} schema`,
+                details: [
+                    topSuggestion.reason,
+                    ...(topSuggestion.fields ? [`Recommended fields: ${topSuggestion.fields.join(', ')}`] : []),
+                ],
+                schemaExample: topSuggestion.example,
+                estimatedImpact: 'May enable rich snippets in search results',
+            });
+        }
     }
 
     // Internal linking
@@ -524,4 +558,472 @@ module.exports = {
     generateReport,
     analyzeWhyCompetitorRanks,
     generateSuggestions,
+    analyzeMultipleCompetitors,
+    performGapAnalysis,
 };
+
+// ─── Analyze Multiple Competitors ───
+async function analyzeMultipleCompetitors(domains, keyword, location = 'India') {
+    log.info({ domains, keyword }, 'analyzing multiple competitors');
+
+    const results = [];
+    let totalWordCount = 0;
+    let totalDA = 0;
+    let bestDA = 0;
+    let bestWordCount = 0;
+    let bestPosition = null;
+
+    // Get SERP data for keyword
+    const serpResults = await keywordService.getSERPResults(keyword, location, 50);
+
+    for (const domain of domains) {
+        try {
+            const analysis = await analyzeSingleDomain(domain, keyword, serpResults);
+            results.push(analysis);
+
+            totalWordCount += analysis.pageAnalysis.wordCount || 0;
+            totalDA += analysis.domainAuthority || 0;
+            
+            if (analysis.domainAuthority > bestDA) bestDA = analysis.domainAuthority;
+            if (analysis.pageAnalysis.wordCount > bestWordCount) bestWordCount = analysis.pageAnalysis.wordCount;
+            if (analysis.serpPosition && (!bestPosition || analysis.serpPosition < bestPosition)) {
+                bestPosition = analysis.serpPosition;
+            }
+
+            await new Promise(r => setTimeout(r, 2000));
+        } catch (err) {
+            log.error({ domain, err: err.message }, 'domain analysis failed');
+            results.push({
+                domain,
+                error: err.message,
+                domainAuthority: null,
+                pageAnalysis: null,
+                seoScore: 0,
+            });
+        }
+    }
+
+    // Calculate benchmarks
+    const avgWordCount = Math.round(totalWordCount / results.length);
+    const avgDA = Math.round(totalDA / results.length);
+
+    // Build comparison table
+    const comparisonTable = buildComparisonTable(results);
+
+    // Find common strengths and weaknesses
+    const analysis = analyzePatterns(results);
+
+    return {
+        keyword,
+        location,
+        domains: results,
+        benchmarks: {
+            averageWordCount: avgWordCount,
+            averageDA: avgDA,
+            bestDA,
+            bestWordCount,
+        },
+        comparisonTable,
+        patterns: analysis,
+        serpRanking: serpResults.slice(0, 10).map(r => ({
+            domain: r.domain,
+            position: r.position,
+            title: r.title,
+            snippet: r.snippet,
+        })),
+        timestamp: new Date().toISOString(),
+    };
+}
+
+// ─── Analyze Single Domain ───
+async function analyzeSingleDomain(domain, keyword, serpResults = null) {
+    const serpEntry = serpResults?.find(r => r.domain.includes(domain));
+    
+    // Get domain authority
+    const domainAuthority = await keywordService.getDomainAuthority(domain);
+
+    // Analyze page if we have a URL
+    let pageAnalysis = null;
+    let pageUrl = null;
+
+    if (serpEntry?.url) {
+        pageUrl = serpEntry.url;
+        pageAnalysis = await keywordService.analyzePageContent(pageUrl, keyword);
+    }
+
+    // Calculate SEO score
+    const seoScore = calculateDomainSEOScore(pageAnalysis, domainAuthority);
+
+    return {
+        domain,
+        url: pageUrl,
+        serpPosition: serpEntry?.position || null,
+        domainAuthority,
+        pageAnalysis: pageAnalysis ? {
+            wordCount: pageAnalysis.wordCount,
+            keywordDensity: pageAnalysis.keywordAnalysis.density,
+            keywordMatches: pageAnalysis.keywordAnalysis.exactMatches,
+            h1: pageAnalysis.seoElements.h1Text,
+            metaDescription: pageAnalysis.seoElements.metaDescription,
+            schemaMarkup: pageAnalysis.seoElements.hasSchema,
+            schemaTypes: pageAnalysis.seoElements.schemaDetails?.detectedTypes || [],
+            schemaValid: pageAnalysis.seoElements.schemaDetails?.isValid || false,
+            schemaErrors: pageAnalysis.seoElements.schemaDetails?.errors || [],
+            schemaSuggestions: pageAnalysis.seoElements.schemaSuggestions || [],
+            pageType: pageAnalysis.seoElements.pageType?.primary || 'WebPage',
+            internalLinks: pageAnalysis.seoElements.internalLinks,
+            externalLinks: pageAnalysis.seoElements.externalLinks,
+            images: pageAnalysis.seoElements.images,
+            imagesWithAlt: pageAnalysis.seoElements.imagesWithAlt,
+            headingStructure: pageAnalysis.headingStructure,
+        } : null,
+        seoScore,
+    };
+}
+
+// ─── Calculate Domain SEO Score ───
+function calculateDomainSEOScore(pageAnalysis, da) {
+    let score = 0;
+
+    // DA contributes up to 30 points
+    score += Math.min(30, da);
+
+    if (pageAnalysis) {
+        const seo = pageAnalysis.seoElements;
+        const kw = pageAnalysis.keywordAnalysis;
+
+        // Word count (up to 15 points)
+        if (pageAnalysis.wordCount >= 2000) score += 15;
+        else if (pageAnalysis.wordCount >= 1000) score += 10;
+        else if (pageAnalysis.wordCount >= 500) score += 5;
+
+        // Keyword density (up to 15 points)
+        if (kw.density >= 1 && kw.density <= 3) score += 15;
+        else if (kw.density >= 0.5 && kw.density <= 5) score += 10;
+
+        // SEO elements (up to 40 points)
+        if (seo.hasH1) score += 10;
+        if (seo.hasMetaDescription) score += 10;
+        if (seo.hasSchema) score += 10;
+        if (seo.internalLinks > 0) score += 5;
+        if (seo.externalLinks > 0) score += 5;
+
+        // Image optimization (up to 10 points)
+        if (seo.images === seo.imagesWithAlt) score += 10;
+        else if (seo.imagesWithAlt / seo.images >= 0.8) score += 7;
+        else if (seo.imagesWithAlt / seo.images >= 0.5) score += 4;
+    }
+
+    return Math.min(100, score);
+}
+
+// ─── Build Comparison Table ───
+function buildComparisonTable(results) {
+    return {
+        domainAuthority: results.map(r => ({
+            domain: r.domain,
+            value: r.domainAuthority,
+            rank: null,
+        })).sort((a, b) => (b.value || 0) - (a.value || 0)).map((r, i) => {
+            r.rank = i + 1;
+            return r;
+        }),
+        wordCount: results.map(r => ({
+            domain: r.domain,
+            value: r.pageAnalysis?.wordCount || 0,
+            rank: null,
+        })).sort((a, b) => b.value - a.value).map((r, i) => {
+            r.rank = i + 1;
+            return r;
+        }),
+        keywordDensity: results.map(r => ({
+            domain: r.domain,
+            value: r.pageAnalysis?.keywordDensity || 0,
+            rank: null,
+        })).sort((a, b) => b.value - a.value).map((r, i) => {
+            r.rank = i + 1;
+            return r;
+        }),
+        seoScore: results.map(r => ({
+            domain: r.domain,
+            value: r.seoScore || 0,
+            rank: null,
+        })).sort((a, b) => b.value - a.value).map((r, i) => {
+            r.rank = i + 1;
+            return r;
+        }),
+        serpPosition: results.filter(r => r.serpPosition).map(r => ({
+            domain: r.domain,
+            value: r.serpPosition,
+            rank: null,
+        })).sort((a, b) => a.value - b.value).map((r, i) => {
+            r.rank = i + 1;
+            return r;
+        }),
+    };
+}
+
+// ─── Analyze Patterns ───
+function analyzePatterns(results) {
+    const patterns = {
+        commonStrengths: [],
+        commonWeaknesses: [],
+        opportunities: [],
+        recommendations: [],
+    };
+
+    // Analyze word counts
+    const wordCounts = results.filter(r => r.pageAnalysis?.wordCount).map(r => r.pageAnalysis.wordCount);
+    if (wordCounts.length > 0) {
+        const avgWC = wordCounts.reduce((a, b) => a + b, 0) / wordCounts.length;
+        const minWC = Math.min(...wordCounts);
+        
+        if (avgWC < 1000) {
+            patterns.commonWeaknesses.push({
+                factor: 'Low content volume',
+                detail: `Average word count is ${Math.round(avgWC)} words - competitors with 2000+ words tend to rank better`,
+            });
+        }
+
+        const lowWordCountDomains = results.filter(r => r.pageAnalysis?.wordCount < avgWC * 0.7);
+        if (lowWordCountDomains.length > 0) {
+            patterns.opportunities.push({
+                factor: 'Content gap opportunity',
+                detail: `${lowWordCountDomains.length} competitor(s) have below-average content length`,
+                domains: lowWordCountDomains.map(r => r.domain),
+            });
+        }
+    }
+
+    // Analyze SEO elements
+    const hasH1Count = results.filter(r => r.pageAnalysis?.h1).length;
+    const hasMetaCount = results.filter(r => r.pageAnalysis?.metaDescription).length;
+    const hasSchemaCount = results.filter(r => r.pageAnalysis?.schemaMarkup).length;
+    const schemaTypes = results.flatMap(r => r.pageAnalysis?.schemaTypes || []).filter((v, i, a) => a.indexOf(v) === i);
+
+    if (hasH1Count === results.length) {
+        patterns.commonStrengths.push('All competitors have H1 tags');
+    }
+    if (hasMetaCount < results.length / 2) {
+        patterns.commonWeaknesses.push({
+            factor: 'Meta descriptions',
+            detail: `Only ${hasMetaCount}/${results.length} competitors have optimized meta descriptions`,
+        });
+    }
+    if (hasSchemaCount > results.length / 2) {
+        patterns.commonStrengths.push(`${hasSchemaCount}/${results.length} competitors use schema markup`);
+        if (schemaTypes.length > 0) {
+            patterns.commonStrengths.push(`Common schema types: ${schemaTypes.join(', ')}`);
+        }
+    } else if (hasSchemaCount === 0) {
+        patterns.commonWeaknesses.push({
+            factor: 'Schema Markup',
+            detail: `None of the competitors use schema markup - opportunity to gain advantage`,
+        });
+    }
+
+    // Analyze links
+    const internalLinks = results.map(r => r.pageAnalysis?.internalLinks || 0);
+    const externalLinks = results.map(r => r.pageAnalysis?.externalLinks || 0);
+    const avgInternal = internalLinks.reduce((a, b) => a + b, 0) / results.length;
+    const avgExternal = externalLinks.reduce((a, b) => a + b, 0) / results.length;
+
+    if (avgInternal < 5) {
+        patterns.recommendations.push({
+            priority: 'HIGH',
+            action: 'Improve internal linking',
+            detail: `Average internal links: ${Math.round(avgInternal)}. Aim for 10+ per page.`,
+        });
+    }
+    if (avgExternal < 3) {
+        patterns.recommendations.push({
+            priority: 'MEDIUM',
+            action: 'Add external links',
+            detail: `Average external links: ${Math.round(avgExternal)}. Linking to authoritative sources signals trust.`,
+        });
+    }
+
+    // Keyword density analysis
+    const densities = results.filter(r => r.pageAnalysis?.keywordDensity).map(r => r.pageAnalysis.keywordDensity);
+    if (densities.length > 0) {
+        const avgDensity = densities.reduce((a, b) => a + b, 0) / densities.length;
+        if (avgDensity < 0.5) {
+            patterns.recommendations.push({
+                priority: 'MEDIUM',
+                action: 'Increase keyword usage',
+                detail: `Average keyword density: ${avgDensity.toFixed(2)}%. Target 1-2% for optimal results.`,
+            });
+        }
+    }
+
+    return patterns;
+}
+
+// ─── Perform Gap Analysis ───
+async function performGapAnalysis(myDomain, competitorDomains, keyword) {
+    log.info({ myDomain, competitorDomains, keyword }, 'performing gap analysis');
+
+    // Analyze my domain
+    const myAnalysis = await analyzeSingleDomain(myDomain, keyword);
+
+    // Analyze competitors
+    const competitorAnalyses = [];
+    for (const domain of competitorDomains) {
+        try {
+            const analysis = await analyzeSingleDomain(domain, keyword);
+            competitorAnalyses.push(analysis);
+            await new Promise(r => setTimeout(r, 2000));
+        } catch (err) {
+            log.error({ domain, err: err.message }, 'competitor analysis failed');
+        }
+    }
+
+    // Calculate gaps
+    const gaps = [];
+
+    // DA gap
+    const compAvgDA = competitorAnalyses.reduce((sum, c) => sum + (c.domainAuthority || 0), 0) / competitorAnalyses.length;
+    const daGap = Math.round(compAvgDA - (myAnalysis.domainAuthority || 0));
+    if (daGap > 0) {
+        gaps.push({
+            category: 'Domain Authority',
+            myValue: myAnalysis.domainAuthority,
+            competitorAvg: Math.round(compAvgDA),
+            gap: daGap,
+            priority: daGap > 15 ? 'HIGH' : 'MEDIUM',
+            recommendation: `Build backlinks to close the DA gap of ${daGap} points`,
+        });
+    }
+
+    // Content gap
+    const compAvgWC = competitorAnalyses.reduce((sum, c) => sum + (c.pageAnalysis?.wordCount || 0), 0) / competitorAnalyses.length;
+    const wcGap = Math.round(compAvgWC - (myAnalysis.pageAnalysis?.wordCount || 0));
+    if (wcGap > 200) {
+        gaps.push({
+            category: 'Content Length',
+            myValue: myAnalysis.pageAnalysis?.wordCount || 0,
+            competitorAvg: Math.round(compAvgWC),
+            gap: wcGap,
+            priority: wcGap > 500 ? 'HIGH' : 'MEDIUM',
+            recommendation: `Add approximately ${Math.ceil(wcGap / 100) * 100} more words to match competitor content volume`,
+        });
+    }
+
+    // Keyword density gap
+    const compAvgKD = competitorAnalyses.reduce((sum, c) => sum + (c.pageAnalysis?.keywordDensity || 0), 0) / competitorAnalyses.length;
+    const kdGap = (compAvgKD - (myAnalysis.pageAnalysis?.keywordDensity || 0)).toFixed(2);
+    if (parseFloat(kdGap) > 0.3) {
+        gaps.push({
+            category: 'Keyword Density',
+            myValue: myAnalysis.pageAnalysis?.keywordDensity || 0,
+            competitorAvg: parseFloat(compAvgKD.toFixed(2)),
+            gap: parseFloat(kdGap),
+            priority: 'MEDIUM',
+            recommendation: `Increase keyword usage to match ${compAvgKD.toFixed(2)}% density (currently ${(myAnalysis.pageAnalysis?.keywordDensity || 0).toFixed(2)}%)`,
+        });
+    }
+
+    // SEO elements gap
+    const myHasH1 = myAnalysis.pageAnalysis?.h1 ? 1 : 0;
+    const compHasH1 = competitorAnalyses.filter(c => c.pageAnalysis?.h1).length;
+    if (compHasH1 > competitorAnalyses.length / 2 && !myAnalysis.pageAnalysis?.h1) {
+        gaps.push({
+            category: 'H1 Tag',
+            myValue: 'Missing',
+            competitorAvg: `${compHasH1}/${competitorAnalyses.length} have H1`,
+            gap: 'Missing',
+            priority: 'HIGH',
+            recommendation: 'Add H1 tag with target keyword',
+        });
+    }
+
+    const myHasMeta = myAnalysis.pageAnalysis?.metaDescription ? 1 : 0;
+    const compHasMeta = competitorAnalyses.filter(c => c.pageAnalysis?.metaDescription).length;
+    if (compHasMeta > competitorAnalyses.length / 2 && !myAnalysis.pageAnalysis?.metaDescription) {
+        gaps.push({
+            category: 'Meta Description',
+            myValue: 'Missing',
+            competitorAvg: `${compHasMeta}/${competitorAnalyses.length} have meta description`,
+            gap: 'Missing',
+            priority: 'MEDIUM',
+            recommendation: 'Add compelling meta description with keyword and CTA',
+        });
+    }
+
+    const myHasSchema = myAnalysis.pageAnalysis?.schemaMarkup ? 1 : 0;
+    const compHasSchema = competitorAnalyses.filter(c => c.pageAnalysis?.schemaMarkup).length;
+    if (compHasSchema > competitorAnalyses.length / 2 && !myAnalysis.pageAnalysis?.schemaMarkup) {
+        gaps.push({
+            category: 'Schema Markup',
+            myValue: 'Missing',
+            competitorAvg: `${compHasSchema}/${competitorAnalyses.length} use schema`,
+            gap: 'Missing',
+            priority: 'MEDIUM',
+            recommendation: 'Add structured data (FAQ, Article, or LocalBusiness schema)',
+        });
+    }
+
+    // Internal links gap
+    const compAvgIL = competitorAnalyses.reduce((sum, c) => sum + (c.pageAnalysis?.internalLinks || 0), 0) / competitorAnalyses.length;
+    const ilGap = Math.round(compAvgIL - (myAnalysis.pageAnalysis?.internalLinks || 0));
+    if (ilGap > 3) {
+        gaps.push({
+            category: 'Internal Links',
+            myValue: myAnalysis.pageAnalysis?.internalLinks || 0,
+            competitorAvg: Math.round(compAvgIL),
+            gap: ilGap,
+            priority: 'LOW',
+            recommendation: `Add ${ilGap} more internal links to match competitor average`,
+        });
+    }
+
+    // Opportunities (what competitors have that you don't)
+    const opportunities = [];
+
+    // Find best performer in each category
+    if (competitorAnalyses.length > 0) {
+        const bestDA = competitorAnalyses.reduce((best, c) => 
+            (c.domainAuthority || 0) > (best.domainAuthority || 0) ? c : best
+        );
+        if ((bestDA.domainAuthority || 0) > (myAnalysis.domainAuthority || 0) + 10) {
+            opportunities.push({
+                type: 'High DA Competitor',
+                domain: bestDA.domain,
+                da: bestDA.domainAuthority,
+                insight: 'Study their backlink profile and outreach strategy',
+            });
+        }
+
+        const bestContent = competitorAnalyses.reduce((best, c) => 
+            (c.pageAnalysis?.wordCount || 0) > (best.pageAnalysis?.wordCount || 0) ? c : best
+        );
+        if ((bestContent.pageAnalysis?.wordCount || 0) > (myAnalysis.pageAnalysis?.wordCount || 0) * 1.5) {
+            opportunities.push({
+                type: 'Content Leader',
+                domain: bestContent.domain,
+                wordCount: bestContent.pageAnalysis?.wordCount,
+                insight: 'Analyze their content structure and topics covered',
+            });
+        }
+    }
+
+    return {
+        myDomain,
+        keyword,
+        myAnalysis,
+        competitorAnalyses,
+        gaps: gaps.sort((a, b) => {
+            const priorityOrder = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+            return priorityOrder[a.priority] - priorityOrder[b.priority];
+        }),
+        opportunities,
+        summary: {
+            totalGaps: gaps.length,
+            highPriority: gaps.filter(g => g.priority === 'HIGH').length,
+            mediumPriority: gaps.filter(g => g.priority === 'MEDIUM').length,
+            lowPriority: gaps.filter(g => g.priority === 'LOW').length,
+            topRecommendation: gaps[0]?.recommendation || 'Continue monitoring competitors',
+        },
+        timestamp: new Date().toISOString(),
+    };
+}

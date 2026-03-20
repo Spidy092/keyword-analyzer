@@ -204,10 +204,10 @@ function renderResearchResults(data) {
     tbody.innerHTML = data.competitors.map((comp, i) => `
         <tr>
             <td>${comp.position}</td>
-            <td class="domain">${comp.domain}</td>
+            <td><a href="${comp.url}" target="_blank" rel="noopener" class="domain-link">${comp.domain}</a></td>
             <td>${truncate(comp.title, 50)}</td>
             <td>
-                <button class="btn btn-sm btn-outline" onclick="analyzeCompetitor('${comp.url}', '${data.keyword.keyword}')">
+                <button class="btn btn-sm btn-outline" onclick="analyzeCompetitor('${comp.url}', '${data.keyword.keyword.replace(/'/g, "\\'")}', ${comp.position})">
                     <i class="fas fa-chart-bar"></i> Analyze
                 </button>
             </td>
@@ -241,40 +241,106 @@ function searchRelated(keyword) {
 }
 
 // ─── Analyze Competitor ───
-async function analyzeCompetitor(url, keyword) {
-    try {
-        const data = await api('/api/competitors/analyze', {
-            method: 'POST',
-            body: JSON.stringify({ url, keyword }),
-        });
-
-        showCompetitorAnalysis(data.analysis);
-    } catch (err) {
-        console.error('Analysis failed:', err);
-    }
-}
-
-function showCompetitorAnalysis(analysis) {
+async function analyzeCompetitor(url, keyword, position) {
     const modal = $('#competitorAnalysisModal');
     const content = $('#competitorAnalysisContent');
 
+    // Show modal immediately with loading state
+    content.innerHTML = `
+        <div class="modal-loading">
+            <div class="spinner-small"></div>
+            <p>Analyzing page content...</p>
+        </div>
+    `;
+    modal.classList.add('active');
+
+    try {
+        const data = await fetch(`${API_BASE}/api/competitors/analyze`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url, keyword }),
+        });
+        const result = await data.json();
+
+        if (!result.success) {
+            throw new Error(result.error || 'Analysis failed');
+        }
+
+        showCompetitorAnalysis(result.analysis, position);
+    } catch (err) {
+        console.error('Analysis failed:', err);
+        content.innerHTML = `
+            <div class="modal-error">
+                <i class="fas fa-exclamation-triangle"></i>
+                <h4>Analysis Failed</h4>
+                <p>${err.message || 'Could not analyze this page. The site may be blocking automated requests.'}</p>
+            </div>
+        `;
+    }
+}
+
+function showCompetitorAnalysis(analysis, position) {
+    const content = $('#competitorAnalysisContent');
+
+    // Keyword density color class
+    const density = analysis.content.keywordAnalysis.density;
+    let densityClass = 'density-low';
+    if (density >= 1) densityClass = 'density-good';
+    else if (density >= 0.5) densityClass = 'density-ok';
+
+    // Word count progress (target ~1500 words)
+    const wordPct = Math.min(100, Math.round((analysis.content.wordCount / 1500) * 100));
+
+    // DA label
+    const daValue = analysis.domainAuthority;
+    const isEstimatedDA = daValue <= 50;
+
+    // SEO data
+    const seo = analysis.seo || {};
+    const headings = seo.headings || { h1: 0, h2: 0, h3: 0 };
+    const images = seo.images || 0;
+    const imagesWithAlt = seo.imagesWithAlt || 0;
+
+    // Individual keyword word counts
+    const wordCounts = analysis.content.keywordAnalysis.wordCounts || {};
+    const keywordWordsHtml = Object.entries(wordCounts).map(([word, count]) => 
+        `<span class="keyword-word"><span class="word">${word}</span><span class="count">(${count})</span></span>`
+    ).join('');
+
+    // Schema details
+    const schemaDetails = seo.schemaDetails || {};
+    const pageType = seo.pageType || {};
+    const schemaSuggestions = seo.schemaSuggestions || [];
+    const schemaTypesHtml = schemaDetails.detectedTypes?.length > 0 
+        ? schemaDetails.detectedTypes.map(t => `<span class="schema-type">${t}</span>`).join('')
+        : '<span class="no-schema">None detected</span>';
+    const schemaErrorsHtml = schemaDetails.errors?.length > 0 
+        ? schemaDetails.errors.map(e => `<div class="schema-error">${e.message}</div>`).join('')
+        : '';
+
     content.innerHTML = `
         <div class="analysis-detail">
-            <h4>${analysis.domain}</h4>
-            <p class="url">${analysis.url}</p>
-            
+            <div class="modal-domain-header">
+                ${position ? `<span class="rank-badge">#${position}</span>` : ''}
+                <h4>${analysis.domain}</h4>
+            </div>
+            <p class="url"><a href="${analysis.url}" target="_blank" rel="noopener">${analysis.url}</a></p>
+
+            <!-- Stats Grid -->
             <div class="stats-grid">
                 <div class="stat-box">
                     <span class="label">Domain Authority</span>
-                    <span class="value">${analysis.domainAuthority}</span>
+                    <span class="value ${isEstimatedDA ? 'estimated' : ''}">${daValue}</span>
+                    ${isEstimatedDA ? '<span class="sublabel">estimated</span>' : ''}
                 </div>
                 <div class="stat-box">
                     <span class="label">Word Count</span>
                     <span class="value">${formatNumber(analysis.content.wordCount)}</span>
+                    <div class="word-count-bar"><div class="fill" style="width: ${wordPct}%"></div></div>
                 </div>
                 <div class="stat-box">
                     <span class="label">Keyword Density</span>
-                    <span class="value">${analysis.content.keywordAnalysis.density}%</span>
+                    <span class="value ${densityClass}">${density}%</span>
                 </div>
                 <div class="stat-box">
                     <span class="label">Keyword Matches</span>
@@ -282,31 +348,130 @@ function showCompetitorAnalysis(analysis) {
                 </div>
             </div>
 
-            <h5>SEO Elements</h5>
-            <div class="seo-checks">
-                <div class="check ${analysis.seo.hasH1 ? 'pass' : 'fail'}">
-                    <i class="fas ${analysis.seo.hasH1 ? 'fa-check' : 'fa-times'}"></i>
-                    H1 Tag
+            <!-- Individual Keyword Word Counts -->
+            ${Object.keys(wordCounts).length > 0 ? `
+                <div class="keyword-words-section">
+                    <h5 class="section-title"><i class="fas fa-search"></i> Keyword Word Breakdown</h5>
+                    <div class="keyword-words">${keywordWordsHtml}</div>
                 </div>
-                <div class="check ${analysis.seo.hasMetaDescription ? 'pass' : 'fail'}">
-                    <i class="fas ${analysis.seo.hasMetaDescription ? 'fa-check' : 'fa-times'}"></i>
+            ` : ''}
+
+            <!-- H1 Preview -->
+            ${seo.hasH1 && seo.h1Text ? `
+                <h5 class="section-title"><i class="fas fa-heading"></i> H1 Tag</h5>
+                <div class="h1-preview">${truncate(seo.h1Text, 120)}</div>
+            ` : ''}
+
+            <!-- Meta Description Preview -->
+            ${seo.hasMetaDescription && seo.metaDescription ? `
+                <h5 class="section-title"><i class="fas fa-align-left"></i> Meta Description</h5>
+                <div class="meta-preview">${truncate(seo.metaDescription, 200)}</div>
+            ` : ''}
+
+            <!-- SEO Checklist -->
+            <h5 class="section-title"><i class="fas fa-clipboard-check"></i> SEO Elements</h5>
+            <div class="seo-checks">
+                <div class="check ${seo.hasH1 ? 'pass' : 'fail'}">
+                    <i class="fas ${seo.hasH1 ? 'fa-check-circle' : 'fa-times-circle'}"></i>
+                    H1 Tag
+                    ${seo.hasH1 && seo.h1Text ? `<span class="check-detail">${truncate(seo.h1Text, 40)}</span>` : ''}
+                </div>
+                <div class="check ${seo.hasMetaDescription ? 'pass' : 'fail'}">
+                    <i class="fas ${seo.hasMetaDescription ? 'fa-check-circle' : 'fa-times-circle'}"></i>
                     Meta Description
                 </div>
-                <div class="check ${analysis.seo.hasSchema ? 'pass' : 'fail'}">
-                    <i class="fas ${analysis.seo.hasSchema ? 'fa-check' : 'fa-times'}"></i>
+                <div class="check ${seo.hasSchema ? 'pass' : 'fail'}">
+                    <i class="fas ${seo.hasSchema ? 'fa-check-circle' : 'fa-times-circle'}"></i>
                     Schema Markup
+                    ${seo.hasSchema ? `<span class="schema-count">(${schemaDetails.count || 1})</span>` : ''}
+                </div>
+                ${pageType.primary ? `
+                    <div class="check pass">
+                        <i class="fas fa-file-alt"></i>
+                        Page Type: <span class="page-type">${pageType.primary}</span>
+                    </div>
+                ` : ''}
+            </div>
+
+            <!-- Schema Details -->
+            ${seo.hasSchema || pageType.primary ? `
+                <h5 class="section-title"><i class="fas fa-code"></i> Schema & Page Type</h5>
+                <div class="schema-details">
+                    <div class="schema-row">
+                        <span class="schema-label">Detected Types:</span>
+                        <div class="schema-types">${schemaTypesHtml}</div>
+                    </div>
+                    ${pageType.all && pageType.all.length > 1 ? `
+                        <div class="schema-row">
+                            <span class="schema-label">Possible Types:</span>
+                            <div class="schema-types">${pageType.all.map(t => `<span class="schema-type secondary">${t}</span>`).join('')}</div>
+                        </div>
+                    ` : ''}
+                    ${schemaErrorsHtml ? `
+                        <div class="schema-errors">
+                            <span class="schema-label error">Errors:</span>
+                            ${schemaErrorsHtml}
+                        </div>
+                    ` : ''}
+                </div>
+            ` : ''}
+
+            <!-- Schema Suggestions -->
+            ${schemaSuggestions.length > 0 ? `
+                <h5 class="section-title"><i class="fas fa-lightbulb"></i> Schema Suggestions</h5>
+                <div class="schema-suggestions">
+                    ${schemaSuggestions.map(s => `
+                        <div class="suggestion ${s.priority === 'HIGH' ? 'high' : s.priority === 'CRITICAL' ? 'critical' : ''}">
+                            <span class="suggestion-type">${s.type}</span>
+                            <span class="suggestion-priority ${s.priority.toLowerCase()}">${s.priority}</span>
+                            <p class="suggestion-reason">${s.reason}</p>
+                            ${s.fields ? `<p class="suggestion-fields">Fields: ${s.fields.join(', ')}</p>` : ''}
+                        </div>
+                    `).join('')}
+                </div>
+            ` : ''}
+
+            <!-- Heading Structure -->
+            <h5 class="section-title"><i class="fas fa-list-ol"></i> Heading Structure</h5>
+            <div class="heading-structure">
+                <div class="heading-item">
+                    <span class="heading-tag">H1</span>
+                    <span class="heading-count">${headings.h1 || 0}</span>
+                </div>
+                <div class="heading-item">
+                    <span class="heading-tag">H2</span>
+                    <span class="heading-count">${headings.h2 || 0}</span>
+                </div>
+                <div class="heading-item">
+                    <span class="heading-tag">H3</span>
+                    <span class="heading-count">${headings.h3 || 0}</span>
                 </div>
             </div>
 
-            <h5>Links</h5>
+            <!-- Images -->
+            ${images > 0 ? `
+                <h5 class="section-title"><i class="fas fa-image"></i> Images</h5>
+                <div class="image-stat">
+                    <i class="fas fa-image"></i>
+                    <span class="img-ratio">${imagesWithAlt}/${images}</span>
+                    images have alt text
+                </div>
+            ` : ''}
+
+            <!-- Links -->
+            <h5 class="section-title"><i class="fas fa-link"></i> Links</h5>
             <div class="link-stats">
-                <span>Internal: ${analysis.seo.internalLinks || 0}</span>
-                <span>External: ${analysis.seo.externalLinks || 0}</span>
+                <div class="link-item">
+                    <span class="link-count">${seo.internalLinks || 0}</span>
+                    <span class="link-label">Internal</span>
+                </div>
+                <div class="link-item">
+                    <span class="link-count">${seo.externalLinks || 0}</span>
+                    <span class="link-label">External</span>
+                </div>
             </div>
         </div>
     `;
-
-    modal.classList.add('active');
 }
 
 // Close modal
@@ -694,9 +859,40 @@ function hideLoading() {
 }
 
 function showError(message) {
-    alert('Error: ' + message);
+    showToast(message, 'error');
 }
 
 function showSuccess(message) {
-    alert('Success: ' + message);
+    showToast(message, 'success');
+}
+
+function showToast(message, type = 'info') {
+    const container = $('#toastContainer');
+    if (!container) return;
+
+    const icons = {
+        success: 'fa-check-circle',
+        error: 'fa-exclamation-circle',
+        info: 'fa-info-circle',
+    };
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.innerHTML = `<i class="fas ${icons[type] || icons.info}"></i><span>${message}</span>`;
+
+    container.appendChild(toast);
+
+    // Auto remove after 4s
+    const timer = setTimeout(() => removeToast(toast), 4000);
+
+    // Click to dismiss early
+    toast.addEventListener('click', () => {
+        clearTimeout(timer);
+        removeToast(toast);
+    });
+}
+
+function removeToast(toast) {
+    toast.classList.add('removing');
+    toast.addEventListener('animationend', () => toast.remove());
 }

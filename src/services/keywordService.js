@@ -472,8 +472,14 @@ async function analyzePageContent(url, keyword) {
             }
         });
 
-        // Check for schema markup
-        const hasSchema = $('script[type="application/ld+json"]').length > 0;
+        // Enhanced schema markup detection
+        const schemaAnalysis = analyzeSchemaMarkup($);
+
+        // Detect page type for schema suggestions
+        const pageType = detectPageType($, h1Text, metaDescription);
+
+        // Generate schema suggestions
+        const schemaSuggestions = generateSchemaSuggestions(schemaAnalysis, pageType);
 
         return {
             url,
@@ -493,7 +499,10 @@ async function analyzePageContent(url, keyword) {
                 imagesWithAlt,
                 internalLinks,
                 externalLinks,
-                hasSchema,
+                hasSchema: schemaAnalysis.hasSchema,
+                schemaDetails: schemaAnalysis,
+                pageType,
+                schemaSuggestions,
             },
         };
     } catch (err) {
@@ -506,6 +515,221 @@ async function analyzePageContent(url, keyword) {
             error: err.message,
         };
     }
+}
+
+// ─── Analyze Schema Markup ───
+function analyzeSchemaMarkup($) {
+    const schemaScripts = $('script[type="application/ld+json"]');
+    const schemaData = [];
+    const detectedTypes = [];
+    const errors = [];
+
+    schemaScripts.each((i, el) => {
+        try {
+            const content = $(el).html();
+            if (content) {
+                const parsed = JSON.parse(content);
+                const normalizedTypes = Array.isArray(parsed) ? parsed : [parsed];
+                
+                normalizedTypes.forEach(item => {
+                    if (item['@type']) {
+                        const types = Array.isArray(item['@type']) ? item['@type'] : [item['@type']];
+                        types.forEach(type => {
+                            const normalizedType = type.replace(/^https?:\/\/schema\.org\//, '');
+                            if (!detectedTypes.includes(normalizedType)) {
+                                detectedTypes.push(normalizedType);
+                            }
+                        });
+                    }
+                    
+                    if (item['@graph']) {
+                        item['@graph'].forEach(graphItem => {
+                            if (graphItem['@type']) {
+                                const types = Array.isArray(graphItem['@type']) ? graphItem['@type'] : [graphItem['@type']];
+                                types.forEach(type => {
+                                    const normalizedType = type.replace(/^https?:\/\/schema\.org\//, '');
+                                    if (!detectedTypes.includes(normalizedType)) {
+                                        detectedTypes.push(normalizedType);
+                                    }
+                                });
+                            }
+                        });
+                    }
+                    
+                    schemaData.push({
+                        index: i,
+                        valid: true,
+                        types: types,
+                    });
+                });
+            }
+        } catch (e) {
+            errors.push({
+                index: i,
+                message: e.message,
+            });
+        }
+    });
+
+    return {
+        hasSchema: schemaScripts.length > 0,
+        count: schemaScripts.length,
+        detectedTypes,
+        schemaData,
+        errors,
+        isValid: errors.length === 0,
+    };
+}
+
+// ─── Detect Page Type ───
+function detectPageType($, h1Text, metaDescription) {
+    const pageText = ($('main, article, .content, #content').text() || '').toLowerCase();
+    const fullText = ($('body').text() || '').toLowerCase();
+    const title = ($('title').text() || '').toLowerCase();
+    const h2s = $('h2').map((i, el) => $(el).text().toLowerCase()).get();
+    const h3s = $('h3').map((i, el) => $(el).text().toLowerCase()).get();
+    const headings = [...h2s, ...h3s].join(' ');
+    
+    const pageTypes = [];
+    
+    // FAQ detection
+    if (headings.includes('faq') || headings.includes('question') || headings.includes('?')) {
+        pageTypes.push('FAQ');
+    }
+    
+    // Article/Blog detection
+    if ($('article').length > 0 || $('time[datetime]').length > 0 || $('meta[name="author"]').attr('content')) {
+        pageTypes.push('Article');
+    }
+    
+    // Product detection
+    if (pageText.includes('price') && pageText.includes('add to cart')) {
+        pageTypes.push('Product');
+    }
+    
+    // Local Business detection
+    if (pageText.includes('address') && pageText.includes('phone')) {
+        pageTypes.push('LocalBusiness');
+    }
+    
+    // Service detection
+    if (pageText.includes('service') || pageText.includes('offer') || pageText.includes('solution')) {
+        pageTypes.push('Service');
+    }
+    
+    // Organization detection
+    if (pageText.includes('about us') || pageText.includes('company') || pageText.includes('team')) {
+        pageTypes.push('Organization');
+    }
+    
+    // Contact detection
+    if (pageText.includes('contact') || pageText.includes('email') || pageText.includes('phone')) {
+        pageTypes.push('ContactPage');
+    }
+    
+    // Default to WebPage
+    if (pageTypes.length === 0) {
+        pageTypes.push('WebPage');
+    }
+    
+    return {
+        primary: pageTypes[0],
+        all: pageTypes,
+    };
+}
+
+// ─── Generate Schema Suggestions ───
+function generateSchemaSuggestions(schemaAnalysis, pageType) {
+    const suggestions = [];
+    const hasType = (type) => schemaAnalysis.detectedTypes.includes(type);
+    
+    // Suggest based on page type
+    if (pageType.primary === 'FAQ' && !hasType('FAQPage')) {
+        suggestions.push({
+            type: 'FAQPage',
+            priority: 'HIGH',
+            reason: 'FAQ content detected - FAQ schema can show rich snippets in search',
+            example: {
+                '@context': 'https://schema.org',
+                '@type': 'FAQPage',
+                'mainEntity': [
+                    {
+                        '@type': 'Question',
+                        'name': 'Your question here?',
+                        'acceptedAnswer': {
+                            '@type': 'Answer',
+                            'text': 'Your answer here.'
+                        }
+                    }
+                ]
+            }
+        });
+    }
+    
+    if (pageType.primary === 'Article' && !hasType('Article') && !hasType('BlogPosting')) {
+        suggestions.push({
+            type: 'Article',
+            priority: 'HIGH',
+            reason: 'Article/Blog content detected - Article schema improves rich snippets',
+            fields: ['headline', 'author', 'datePublished', 'dateModified', 'image', 'publisher']
+        });
+    }
+    
+    if (pageType.primary === 'LocalBusiness' && !hasType('LocalBusiness') && !hasType('Organization')) {
+        suggestions.push({
+            type: 'LocalBusiness',
+            priority: 'HIGH',
+            reason: 'Local business content detected - LocalBusiness schema helps with local SEO',
+            fields: ['name', 'address', 'telephone', 'openingHours', 'geo', 'image']
+        });
+    }
+    
+    if (pageType.primary === 'Service' && !hasType('Service')) {
+        suggestions.push({
+            type: 'Service',
+            priority: 'MEDIUM',
+            reason: 'Service content detected - Service schema helps with service-related searches',
+            fields: ['name', 'description', 'provider', 'areaServed', 'priceRange']
+        });
+    }
+    
+    if (pageType.primary === 'Organization' && !hasType('Organization')) {
+        suggestions.push({
+            type: 'Organization',
+            priority: 'MEDIUM',
+            reason: 'Organization content detected - Organization schema helps with brand searches',
+            fields: ['name', 'logo', 'url', 'sameAs (social links)']
+        });
+    }
+    
+    if (!hasType('WebSite')) {
+        suggestions.push({
+            type: 'WebSite',
+            priority: 'LOW',
+            reason: 'WebSite schema enables sitelinks search box in Google results',
+            fields: ['name', 'url']
+        });
+    }
+    
+    if (!hasType('BreadcrumbList')) {
+        suggestions.push({
+            type: 'BreadcrumbList',
+            priority: 'LOW',
+            reason: 'Breadcrumb schema shows path in search results',
+            fields: ['itemListElement']
+        });
+    }
+    
+    if (schemaAnalysis.errors.length > 0) {
+        suggestions.push({
+            type: 'VALIDATION_ERROR',
+            priority: 'CRITICAL',
+            reason: `${schemaAnalysis.errors.length} schema validation error(s) found`,
+            errors: schemaAnalysis.errors.map(e => `Block ${e.index + 1}: ${e.message}`)
+        });
+    }
+    
+    return suggestions;
 }
 
 // ─── Get Domain Authority ───

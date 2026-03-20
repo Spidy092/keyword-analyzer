@@ -1,5 +1,3 @@
-require('dotenv').config();
-
 module.exports = {
     // ─── Database ───
     db: {
@@ -48,8 +46,12 @@ module.exports = {
 
     // ─── Rank Tracking ───
     rankTracking: {
-        checkInterval: parseInt(process.env.CHECK_INTERVAL || '86400'), // 24 hours
+        checkInterval: parseInt(process.env.CHECK_INTERVAL || '86400'),
         alertWebhook: process.env.ALERT_WEBHOOK_URL,
+        webhookTimeout: parseInt(process.env.WEBHOOK_TIMEOUT || '5000'),
+        rankDropThreshold: parseInt(process.env.RANK_DROP_THRESHOLD || '5'),
+        rankImprovementThreshold: parseInt(process.env.RANK_IMPROVEMENT_THRESHOLD || '10'),
+        rateLimitDelay: parseInt(process.env.RATE_LIMIT_DELAY || '3000'),
     },
 
     // ─── Search Settings ───
