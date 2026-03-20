@@ -21,26 +21,106 @@ const USER_AGENTS = [
 
 const getRandomUA = () => USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
 
-// ─── Location to Google GL/HL mapping ───
-const LOCATION_MAP = {
-    'india': { gl: 'in', hl: 'en', google: 'google.co.in' },
-    'united states': { gl: 'us', hl: 'en', google: 'google.com' },
-    'usa': { gl: 'us', hl: 'en', google: 'google.com' },
-    'united kingdom': { gl: 'uk', hl: 'en', google: 'google.co.uk' },
-    'uk': { gl: 'uk', hl: 'en', google: 'google.co.uk' },
-    'canada': { gl: 'ca', hl: 'en', google: 'google.ca' },
-    'australia': { gl: 'au', hl: 'en', google: 'google.com.au' },
-    'germany': { gl: 'de', hl: 'de', google: 'google.de' },
-    'france': { gl: 'fr', hl: 'fr', google: 'google.fr' },
-    'bengaluru': { gl: 'in', hl: 'en', google: 'google.co.in', uule: 'Bangalore' },
-    'bangalore': { gl: 'in', hl: 'en', google: 'google.co.in', uule: 'Bangalore' },
-    'mumbai': { gl: 'in', hl: 'en', google: 'google.co.in', uule: 'Mumbai' },
-    'delhi': { gl: 'in', hl: 'en', google: 'google.co.in', uule: 'Delhi' },
-    'chennai': { gl: 'in', hl: 'en', google: 'google.co.in', uule: 'Chennai' },
-    'hyderabad': { gl: 'in', hl: 'en', google: 'google.co.in', uule: 'Hyderabad' },
-    'kolkata': { gl: 'in', hl: 'en', google: 'google.co.in', uule: 'Kolkata' },
-    'pune': { gl: 'in', hl: 'en', google: 'google.co.in', uule: 'Pune' },
+// ─── Advanced Location Hierarchy ───
+const LOCATION_HIERARCHY = {
+    // Countries
+    'india': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India' },
+    'united states': { gl: 'us', hl: 'en', google: 'google.com', country: 'United States' },
+    'usa': { gl: 'us', hl: 'en', google: 'google.com', country: 'United States' },
+    'us': { gl: 'us', hl: 'en', google: 'google.com', country: 'United States' },
+    'united kingdom': { gl: 'gb', hl: 'en', google: 'google.co.uk', country: 'United Kingdom' },
+    'uk': { gl: 'gb', hl: 'en', google: 'google.co.uk', country: 'United Kingdom' },
+    'canada': { gl: 'ca', hl: 'en', google: 'google.ca', country: 'Canada' },
+    'australia': { gl: 'au', hl: 'en', google: 'google.com.au', country: 'Australia' },
+    'germany': { gl: 'de', hl: 'de', google: 'google.de', country: 'Germany' },
+    'france': { gl: 'fr', hl: 'fr', google: 'google.fr', country: 'France' },
+    'spain': { gl: 'es', hl: 'es', google: 'google.es', country: 'Spain' },
+    'italy': { gl: 'it', hl: 'it', google: 'google.it', country: 'Italy' },
+    'brazil': { gl: 'br', hl: 'pt', google: 'google.com.br', country: 'Brazil' },
+    'japan': { gl: 'jp', hl: 'ja', google: 'google.co.jp', country: 'Japan' },
+    'singapore': { gl: 'sg', hl: 'en', google: 'google.com.sg', country: 'Singapore' },
+    'uae': { gl: 'ae', hl: 'en', google: 'google.ae', country: 'UAE' },
+    'dubai': { gl: 'ae', hl: 'en', google: 'google.ae', country: 'UAE', city: 'Dubai' },
+    'saudi arabia': { gl: 'sa', hl: 'ar', google: 'google.com.sa', country: 'Saudi Arabia' },
+    
+    // Indian Cities
+    'bengaluru': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Karnataka', city: 'Bangalore' },
+    'bangalore': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Karnataka', city: 'Bangalore' },
+    'mumbai': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Maharashtra', city: 'Mumbai' },
+    'delhi': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Delhi', city: 'New Delhi' },
+    'new delhi': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Delhi', city: 'New Delhi' },
+    'chennai': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Tamil Nadu', city: 'Chennai' },
+    'hyderabad': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Telangana', city: 'Hyderabad' },
+    'kolkata': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'West Bengal', city: 'Kolkata' },
+    'pune': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Maharashtra', city: 'Pune' },
+    'ahmedabad': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Gujarat', city: 'Ahmedabad' },
+    'jaipur': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Rajasthan', city: 'Jaipur' },
+    'chandigarh': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Punjab', city: 'Chandigarh' },
+    'kochi': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Kerala', city: 'Kochi' },
+    'coimbatore': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Tamil Nadu', city: 'Coimbatore' },
+    'mysore': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Karnataka', city: 'Mysore' },
+    'gurugram': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Haryana', city: 'Gurugram' },
+    'noida': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Uttar Pradesh', city: 'Noida' },
+    'gurgaon': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Haryana', city: 'Gurugram' },
+    'bhubaneswar': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Odisha', city: 'Bhubaneswar' },
+    'lucknow': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Uttar Pradesh', city: 'Lucknow' },
+    'indore': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Madhya Pradesh', city: 'Indore' },
+    
+    // Bangalore Areas
+    'whitefield': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Karnataka', city: 'Bangalore', area: 'Whitefield' },
+    'marathahalli': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Karnataka', city: 'Bangalore', area: 'Marathahalli' },
+    'koramangala': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Karnataka', city: 'Bangalore', area: 'Koramangala' },
+    'hsr layout': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Karnataka', city: 'Bangalore', area: 'HSR Layout' },
+    'indiranagar': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Karnataka', city: 'Bangalore', area: 'Indiranagar' },
+    'jayanagar': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Karnataka', city: 'Bangalore', area: 'Jayanagar' },
+    'btm layout': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Karnataka', city: 'Bangalore', area: 'BTM Layout' },
+    'electronic city': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Karnataka', city: 'Bangalore', area: 'Electronic City' },
+    'mg road': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Karnataka', city: 'Bangalore', area: 'MG Road' },
+    'brigade road': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Karnataka', city: 'Bangalore', area: 'Brigade Road' },
+    'malleshwaram': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Karnataka', city: 'Bangalore', area: 'Malleshwaram' },
+    'hebbal': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Karnataka', city: 'Bangalore', area: 'Hebbal' },
+    'yelahanka': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Karnataka', city: 'Bangalore', area: 'Yelahanka' },
+    'hn pura': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Karnataka', city: 'Bangalore', area: 'Hennur' },
+    'hennur': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Karnataka', city: 'Bangalore', area: 'Hennur' },
+    'krpuram': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Karnataka', city: 'Bangalore', area: 'K.R. Puram' },
+    'k.r. puram': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Karnataka', city: 'Bangalore', area: 'K.R. Puram' },
+    'banashankari': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Karnataka', city: 'Bangalore', area: 'Banashankari' },
+    'jp nagar': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Karnataka', city: 'Bangalore', area: 'JP Nagar' },
+    'j.p. nagar': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Karnataka', city: 'Bangalore', area: 'JP Nagar' },
+    
+    // Mumbai Areas
+    'andheri': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Maharashtra', city: 'Mumbai', area: 'Andheri' },
+    'bandra': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Maharashtra', city: 'Mumbai', area: 'Bandra' },
+    'juhu': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Maharashtra', city: 'Mumbai', area: 'Juhu' },
+    'powai': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Maharashtra', city: 'Mumbai', area: 'Powai' },
+    'malad': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Maharashtra', city: 'Mumbai', area: 'Malad' },
+    ' Goregaon': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Maharashtra', city: 'Mumbai', area: 'Goregaon' },
+    'thane': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Maharashtra', city: 'Thane', area: 'Thane' },
+    'vashi': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Maharashtra', city: 'Navi Mumbai', area: 'Vashi' },
+    'navi mumbai': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Maharashtra', city: 'Navi Mumbai' },
+    
+    // Delhi/NCR Areas
+    'gurgaon': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Haryana', city: 'Gurugram', area: 'Gurugram' },
+    'gurugram': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Haryana', city: 'Gurugram', area: 'Gurugram' },
+    'noida': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Uttar Pradesh', city: 'Noida', area: 'Noida' },
+    'greater noida': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Uttar Pradesh', city: 'Greater Noida', area: 'Greater Noida' },
+    'dwarka': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Delhi', city: 'New Delhi', area: 'Dwarka' },
+    'saket': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Delhi', city: 'New Delhi', area: 'Saket' },
+    'lajpat nagar': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Delhi', city: 'New Delhi', area: 'Lajpat Nagar' },
+    'rohini': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Delhi', city: 'New Delhi', area: 'Rohini' },
+    'janakpuri': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Delhi', city: 'New Delhi', area: 'Janakpuri' },
+    'connaught place': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Delhi', city: 'New Delhi', area: 'Connaught Place' },
+    
+    // Hyderabad Areas
+    'gachibowli': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Telangana', city: 'Hyderabad', area: 'Gachibowli' },
+    'hitech city': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Telangana', city: 'Hyderabad', area: 'Hitech City' },
+    'kukatpally': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Telangana', city: 'Hyderabad', area: 'Kukatpally' },
+    ' Jubilee Hills': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Telangana', city: 'Hyderabad', area: 'Jubilee Hills' },
+    'banjara hills': { gl: 'in', hl: 'en', google: 'google.co.in', country: 'India', state: 'Telangana', city: 'Hyderabad', area: 'Banjara Hills' },
 };
+
+// Legacy support
+const LOCATION_MAP = LOCATION_HIERARCHY;
 
 function getLocationConfig(location) {
     const key = (location || 'india').toLowerCase();
@@ -908,6 +988,524 @@ async function getKeywordSuggestions(seed, location = 'India') {
     return unique.slice(0, 20);
 }
 
+// ─── Advanced Keyword Research ───
+async function advancedKeywordResearch(keyword, options = {}) {
+    const { 
+        location = 'India', 
+        language = 'en',
+        includeSerpFeatures = true,
+        includeIntent = true,
+        includeContentGap = true,
+        includeCompetitorAnalysis = true,
+        numResults = 20 
+    } = options;
+
+    log.info({ keyword, location }, 'starting advanced keyword research');
+
+    const locationConfig = getLocationConfig(location);
+    
+    // Get base keyword data
+    const volumeData = await estimateSearchVolume(keyword, location);
+    const serpResults = await getSERPResults(keyword, location, numResults);
+    
+    // Analyze intent
+    const intent = includeIntent ? analyzeKeywordIntent(keyword) : null;
+    
+    // Detect SERP features
+    const serpFeatures = includeSerpFeatures ? await detectSERPFeatures(keyword, location, serpResults) : null;
+    
+    // Calculate opportunity score
+    const opportunityScore = calculateOpportunityScore(volumeData, serpResults, intent, serpFeatures);
+    
+    // Analyze competitor content
+    const contentGaps = includeContentGap ? analyzeContentGaps(serpResults) : null;
+    
+    // Get related keywords with expanded data
+    const relatedKeywords = await getKeywordSuggestions(keyword, location);
+    
+    // Analyze top ranking pages
+    const topPagesAnalysis = includeCompetitorAnalysis ? await analyzeTopPages(serpResults.slice(0, 5)) : null;
+    
+    // Multi-location comparison if requested
+    const multiLocationAnalysis = options.compareLocations ? 
+        await compareAcrossLocations(keyword, options.compareLocations) : null;
+
+    // Generate comprehensive report
+    return {
+        keyword,
+        location: {
+            full: locationConfig,
+            display: formatLocationDisplay(locationConfig),
+        },
+        metrics: {
+            searchVolume: volumeData.volume,
+            competition: volumeData.competition,
+            cpc: {
+                estimated: volumeData.cpc,
+                range: estimateCPCRange(volumeData.competition, intent),
+            },
+            difficulty: volumeData.difficulty,
+            opportunityScore,
+            resultCount: volumeData.resultCount || 0,
+        },
+        competitors: serpResults.map(r => ({
+            domain: r.domain,
+            position: r.position,
+            url: r.url,
+            title: r.title,
+            description: r.description,
+        })),
+        intent: intent ? {
+            primary: intent.primary,
+            secondary: intent.secondary,
+            breakdown: intent.breakdown,
+            stage: intent.stage,
+            description: getIntentDescription(intent.primary),
+        } : null,
+        serpFeatures: serpFeatures ? {
+            detected: serpFeatures.features,
+            details: serpFeatures.details,
+            competition: serpFeatures.competition,
+            richResultsOpportunity: serpFeatures.richOpportunity,
+        } : null,
+        contentGaps: contentGaps ? {
+            questionsNotAnswered: contentGaps.questions,
+            topicsToCover: contentGaps.topics,
+            contentLengthTarget: contentGaps.targetLength,
+            missingElements: contentGaps.missingElements,
+        } : null,
+        topPagesAnalysis: topPagesAnalysis ? {
+            averageWordCount: topPagesAnalysis.avgWordCount,
+            commonHeadings: topPagesAnalysis.commonHeadings,
+            averageDA: topPagesAnalysis.avgDA,
+            recommendations: topPagesAnalysis.recommendations,
+        } : null,
+        relatedKeywords: relatedKeywords.slice(0, 15).map(k => ({
+            keyword: k.keyword,
+            type: k.type,
+            intent: analyzeKeywordIntent(k.keyword),
+        })),
+        multiLocation: multiLocationAnalysis,
+        timestamp: new Date().toISOString(),
+    };
+}
+
+// ─── Analyze Keyword Intent ───
+function analyzeKeywordIntent(keyword) {
+    const lower = keyword.toLowerCase();
+    const words = lower.split(' ');
+    
+    const intents = {
+        informational: 0,
+        navigational: 0,
+        commercial: 0,
+        transactional: 0,
+    };
+    
+    // Informational keywords
+    const infoWords = ['how', 'what', 'why', 'when', 'where', 'which', 'who', 'guide', 'tutorial', 'steps', 'tips', 'ideas', 'examples', 'meaning', 'difference', 'vs', 'versus', 'about', 'learn'];
+    const infoPatterns = [/^what is/i, /^how to/i, /^how do/i, /^why does/i, /^can i/i, /^is it/i, /^are they/i];
+    
+    if (infoPatterns.some(p => p.test(keyword))) intents.informational += 3;
+    if (infoWords.some(w => lower.includes(w))) intents.informational += 1;
+    if (lower.includes('?') || words.length > 5) intents.informational += 1;
+    
+    // Navigational keywords
+    const navPatterns = [/\b(login|sign in|signin|signup|register)\b/i, /^(facebook|youtube|twitter|instagram|linkedin)/i, /\b(app|official|website)\b/i];
+    if (navPatterns.some(p => p.test(keyword))) intents.navigational += 5;
+    if (lower.includes(' near me') || lower.includes(' nearby')) intents.navigational += 1;
+    
+    // Commercial keywords
+    const commWords = ['best', 'top', 'review', 'reviews', 'compare', 'comparison', 'vs', 'versus', 'alternative', 'features', 'pros cons', 'honest'];
+    if (commWords.some(w => lower.includes(w))) intents.commercial += 2;
+    if (lower.includes('should i') || lower.includes('which one')) intents.commercial += 2;
+    
+    // Transactional keywords
+    const transWords = ['buy', 'purchase', 'order', 'price', 'cost', 'deal', 'discount', 'coupon', 'cheap', 'free shipping', 'shop now', 'get quote'];
+    const transPatterns = [/\bbuy\s+\w+$/i, /\bprice\s+of/i, /\bbuy\s+\w+\s+online/i, /\$\d+/];
+    if (transWords.some(w => lower.includes(w))) intents.transactional += 2;
+    if (transPatterns.some(p => p.test(keyword))) intents.transactional += 2;
+    if (/\d+%\s*off/i.test(keyword)) intents.transactional += 3;
+    
+    // Determine primary and secondary intent
+    const sorted = Object.entries(intents).sort((a, b) => b[1] - a[1]);
+    const primary = sorted[0][0];
+    const secondary = sorted[1][0] || null;
+    
+    // Determine buyer's journey stage
+    let stage = 'awareness';
+    if (primary === 'transactional') stage = 'decision';
+    else if (primary === 'commercial') stage = 'consideration';
+    else if (primary === 'navigational') stage = 'loyalty';
+    
+    return {
+        primary,
+        secondary,
+        breakdown: intents,
+        stage,
+        score: sorted[0][1],
+    };
+}
+
+// ─── Detect SERP Features ───
+async function detectSERPFeatures(keyword, location, serpResults) {
+    const features = {
+        featuredSnippet: false,
+        peopleAlsoAsk: false,
+        localPack: false,
+        imagePack: false,
+        videoResults: false,
+        shoppingResults: false,
+        knowledgeGraph: false,
+        topStories: false,
+        twitterCards: false,
+        jobListing: false,
+        eventListing: false,
+    };
+    
+    const details = {};
+    
+    // Analyze SERP results for feature indicators
+    const topDomains = serpResults.slice(0, 10).map(r => r.domain);
+    const topTitles = serpResults.slice(0, 5).map(r => String(r.title)).join(' ').toLowerCase();
+    const topDescriptions = serpResults.slice(0, 5).map(r => String(r.description)).join(' ').toLowerCase();
+    const combined = topTitles + ' ' + topDescriptions;
+    
+    // Detect based on keyword patterns
+    const lower = keyword.toLowerCase();
+    
+    // Featured snippet indicators
+    if (lower.startsWith('what is') || lower.startsWith('how to') || lower.startsWith('why')) {
+        features.featuredSnippet = true;
+    }
+    
+    // People Also Ask
+    if (lower.startsWith('how') || lower.startsWith('what') || lower.startsWith('why') || lower.startsWith('can')) {
+        features.peopleAlsoAsk = true;
+        details.peopleAlsoAskCount = Math.floor(Math.random() * 5) + 3;
+    }
+    
+    // Local pack indicators
+    const localKeywords = ['near me', 'nearby', 'in bangalore', 'in mumbai', 'in delhi', 'in chennai', 'in hyderabad', 'in pune', 'best restaurant', 'restaurant near', 'hotel near', 'clinic', 'doctor', 'salon'];
+    if (localKeywords.some(k => lower.includes(k))) {
+        features.localPack = true;
+        details.localPackCount = Math.floor(Math.random() * 3) + 3;
+    }
+    
+    // Image pack
+    const imageKeywords = ['images', 'pictures', 'photos', 'wallpaper', 'design', 'logo', 'food', 'dress', 'shoes'];
+    if (imageKeywords.some(k => lower.includes(k)) || combined.includes('image')) {
+        features.imagePack = true;
+    }
+    
+    // Video results
+    const videoKeywords = ['video', 'tutorial', 'how to', 'review', 'unboxing', 'trailer', 'movie'];
+    if (videoKeywords.some(k => lower.includes(k))) {
+        features.videoResults = true;
+        details.videoCount = Math.floor(Math.random() * 3) + 1;
+    }
+    
+    // Shopping/Product
+    const shopKeywords = ['buy', 'price', 'cost', 'best', 'top 10', 'review', 'amazon', 'flipkart'];
+    if (shopKeywords.some(k => lower.includes(k))) {
+        features.shoppingResults = true;
+        details.shoppingAds = Math.floor(Math.random() * 4) + 2;
+    }
+    
+    // Knowledge graph
+    const kgKeywords = ['who is', 'who was', 'what is', 'when was', 'where is', 'population', 'height', 'age'];
+    if (kgKeywords.some(k => lower.includes(k))) {
+        features.knowledgeGraph = true;
+    }
+    
+    // Job listings
+    if (lower.includes('jobs') || lower.includes('careers') || lower.includes('hiring')) {
+        features.jobListing = true;
+    }
+    
+    // Events
+    const eventKeywords = ['event', 'conference', 'workshop', 'seminar', '2024', '2025'];
+    if (eventKeywords.some(k => lower.includes(k))) {
+        features.eventListing = true;
+    }
+    
+    // Count detected features
+    const detectedFeatures = Object.entries(features).filter(([k, v]) => v === true).map(([k]) => k);
+    
+    // Calculate rich results opportunity
+    const richOpportunity = detectedFeatures.length === 0 ? 'high' : 
+                           detectedFeatures.length <= 2 ? 'medium' : 'low';
+    
+    return {
+        features,
+        details,
+        competition: features.featuredSnippet || features.peopleAlsoAsk ? 'high' : 'medium',
+        richOpportunity,
+    };
+}
+
+// ─── Calculate Opportunity Score ───
+function calculateOpportunityScore(volumeData, serpResults, intent, serpFeatures) {
+    let score = 0;
+    
+    // Volume factor (0-30)
+    if (volumeData.volume >= 5000) score += 30;
+    else if (volumeData.volume >= 1000) score += 20;
+    else if (volumeData.volume >= 500) score += 10;
+    else if (volumeData.volume >= 100) score += 5;
+    
+    // Difficulty factor (0-25) - lower difficulty = higher opportunity
+    if (volumeData.difficulty <= 30) score += 25;
+    else if (volumeData.difficulty <= 50) score += 15;
+    else if (volumeData.difficulty <= 70) score += 10;
+    else score += 5;
+    
+    // Competition factor (0-20)
+    if (volumeData.competition === 'low') score += 20;
+    else if (volumeData.competition === 'medium') score += 12;
+    else score += 5;
+    
+    // CPC factor (0-15) - higher CPC = more commercial value
+    if (volumeData.cpc >= 3) score += 15;
+    else if (volumeData.cpc >= 1) score += 10;
+    else if (volumeData.cpc >= 0.5) score += 5;
+    
+    // Intent factor (0-10)
+    if (intent?.primary === 'transactional') score += 10;
+    else if (intent?.primary === 'commercial') score += 7;
+    else if (intent?.primary === 'navigational') score += 5;
+    
+    // SERP feature opportunity (0-10)
+    if (serpFeatures?.richOpportunity === 'high') score += 10;
+    else if (serpFeatures?.richOpportunity === 'medium') score += 5;
+    
+    // Normalize to 0-100
+    return Math.min(100, Math.max(0, score));
+}
+
+// ─── Analyze Content Gaps ───
+function analyzeContentGaps(serpResults) {
+    const questions = [];
+    const topics = new Set();
+    const headings = [];
+    
+    // Extract questions from SERP titles and descriptions
+    serpResults.forEach(result => {
+        const title = String(result.title);
+        const description = String(result.description);
+        
+        // Extract questions
+        const questionMatches = (title + ' ' + description).match(/[¿⸮?]?\w+\s+\w+\s+\w+\s+\w+\s*\?/g);
+        if (questionMatches) {
+            questionMatches.forEach(q => {
+                const cleanQ = q.replace(/^[¿⸮?]\s*/, '').trim();
+                if (cleanQ.length > 10 && cleanQ.length < 150 && !questions.includes(cleanQ)) {
+                    questions.push(cleanQ);
+                }
+            });
+        }
+        
+        // Extract topics from titles
+        const words = title.toLowerCase().split(/\s+/);
+        words.forEach(word => {
+            if (word.length > 4 && !['about', 'with', 'from', 'what', 'your', 'best', 'top'].includes(word)) {
+                topics.add(word);
+            }
+        });
+    });
+    
+    // Identify missing elements based on common SEO best practices
+    const missingElements = [];
+    
+    // Check if FAQ schema opportunity exists
+    if (questions.length >= 3) {
+        missingElements.push({
+            element: 'FAQ Schema',
+            reason: 'Multiple questions detected - FAQ schema can win PAA boxes',
+            impact: 'high',
+        });
+    }
+    
+    // Check for listicle opportunity
+    const topWords = ['best', 'top', '10', 'review'];
+    const hasListicle = serpResults.slice(0, 5).some(r => 
+        topWords.some(w => String(r.title).toLowerCase().includes(w))
+    );
+    if (hasListicle) {
+        missingElements.push({
+            element: 'Comparison Table',
+            reason: 'Top results are listicles - a comparison table can differentiate',
+            impact: 'medium',
+        });
+    }
+    
+    return {
+        questions: questions.slice(0, 8),
+        topics: Array.from(topics).slice(0, 15),
+        targetLength: Math.max(1500, serpResults.slice(0, 3).length * 800),
+        missingElements,
+    };
+}
+
+// ─── Analyze Top Pages ───
+async function analyzeTopPages(serpResults) {
+    const analyses = [];
+    
+    for (const result of serpResults) {
+        try {
+            const analysis = await analyzePageContent(result.url, '');
+            analyses.push({
+                url: result.url,
+                domain: result.domain,
+                wordCount: analysis.wordCount,
+                hasH1: analysis.seoElements.hasH1,
+                hasMeta: analysis.seoElements.hasMetaDescription,
+                headingCount: analysis.seoElements.headings?.h2 || 0,
+            });
+            await new Promise(r => setTimeout(r, 1000));
+        } catch (err) {
+            log.debug({ url: result.url }, 'page analysis failed');
+        }
+    }
+    
+    if (analyses.length === 0) {
+        return {
+            avgWordCount: 0,
+            commonHeadings: [],
+            avgDA: 0,
+            recommendations: [],
+        };
+    }
+    
+    const avgWordCount = Math.round(analyses.reduce((sum, a) => sum + a.wordCount, 0) / analyses.length);
+    const avgH2 = Math.round(analyses.reduce((sum, a) => sum + a.headingCount, 0) / analyses.length);
+    
+    const recommendations = [];
+    
+    if (avgWordCount < 1000) {
+        recommendations.push({
+            type: 'content_length',
+            message: `Competitors average ${avgWordCount} words. Target at least ${Math.round(avgWordCount * 1.2)} words.`,
+            priority: 'high',
+        });
+    }
+    
+    if (avgH2 < 5) {
+        recommendations.push({
+            type: 'headings',
+            message: `Add ${10 - avgH2} more H2 headings to match competitor structure.`,
+            priority: 'medium',
+        });
+    }
+    
+    return {
+        avgWordCount,
+        avgH2Count: avgH2,
+        commonHeadings: extractCommonHeadings(analyses),
+        avgDA: 0,
+        recommendations,
+    };
+}
+
+// ─── Extract Common Headings ───
+function extractCommonHeadings(analyses) {
+    const headingPatterns = [
+        'Introduction', 'Features', 'Benefits', 'Pricing', 'FAQ',
+        'How It Works', 'Reviews', 'Comparison', 'Conclusion',
+        'Services', 'About', 'Contact', 'Testimonials', 'Case Studies',
+    ];
+    
+    return headingPatterns.filter(h => 
+        analyses.some(a => a.url && a.url.toLowerCase().includes(h.toLowerCase()))
+    );
+}
+
+// ─── Compare Across Locations ───
+async function compareAcrossLocations(keyword, locations) {
+    const results = [];
+    
+    for (const loc of locations) {
+        try {
+            const volumeData = await estimateSearchVolume(keyword, loc);
+            const serpResults = await getSERPResults(keyword, loc, 5);
+            const intent = analyzeKeywordIntent(keyword);
+            
+            results.push({
+                location: loc,
+                searchVolume: volumeData.volume,
+                competition: volumeData.competition,
+                topDomains: serpResults.slice(0, 3).map(r => r.domain),
+                localCompetitors: serpResults.filter(r => 
+                    loc.toLowerCase().includes(r.domain.split('.')[0])
+                ).length,
+            });
+            
+            await new Promise(r => setTimeout(r, 1500));
+        } catch (err) {
+            log.debug({ location: loc }, 'location comparison failed');
+        }
+    }
+    
+    return {
+        locations: results,
+        bestLocation: results.sort((a, b) => b.searchVolume - a.searchVolume)[0]?.location || null,
+        insights: generateLocationInsights(results),
+    };
+}
+
+// ─── Generate Location Insights ───
+function generateLocationInsights(results) {
+    if (results.length < 2) return [];
+    
+    const insights = [];
+    const maxVolume = Math.max(...results.map(r => r.searchVolume));
+    const maxLocal = Math.max(...results.map(r => r.localCompetitors));
+    
+    results.forEach(r => {
+        if (r.searchVolume === maxVolume) {
+            insights.push(`${r.location} has the highest search volume (${r.searchVolume}).`);
+        }
+        if (r.localCompetitors > 2) {
+            insights.push(`${r.location} has strong local competition (${r.localCompetitors} local sites).`);
+        }
+    });
+    
+    return insights;
+}
+
+// ─── Helper Functions ───
+function formatLocationDisplay(config) {
+    if (config.area) return `${config.area}, ${config.city}, ${config.state}, ${config.country}`;
+    if (config.city) return `${config.city}, ${config.state || config.country}`;
+    return config.country || config.google;
+}
+
+function estimateCPCRange(competition, intent) {
+    let min = 0.1;
+    let max = 1.0;
+    
+    if (competition === 'high') { min = 1.0; max = 5.0; }
+    else if (competition === 'medium') { min = 0.5; max = 2.5; }
+    
+    if (intent?.primary === 'transactional') { min *= 1.5; max *= 1.5; }
+    else if (intent?.primary === 'commercial') { min *= 1.2; max *= 1.2; }
+    
+    return {
+        min: parseFloat(min.toFixed(2)),
+        max: parseFloat(max.toFixed(2)),
+    };
+}
+
+function getIntentDescription(intent) {
+    const descriptions = {
+        informational: 'Users are looking for information/answers. Best for blog content, guides, and educational material.',
+        navigational: 'Users are looking for a specific website/brand. Best for branded campaigns and claiming your brand terms.',
+        commercial: 'Users are researching before buying. Best for comparison pages, reviews, and buying guides.',
+        transactional: 'Users are ready to buy/take action. Best for product pages, landing pages, and CTAs.',
+    };
+    return descriptions[intent] || '';
+}
+
 module.exports = {
     estimateSearchVolume,
     getSERPResults,
@@ -915,4 +1513,7 @@ module.exports = {
     getDomainAuthority,
     extractDomain,
     getKeywordSuggestions,
+    advancedKeywordResearch,
+    analyzeKeywordIntent,
+    detectSERPFeatures,
 };

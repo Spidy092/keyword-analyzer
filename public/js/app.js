@@ -8,6 +8,13 @@ const API_BASE = '';
 let currentPage = 'dashboard';
 let currentKeyword = null;
 
+// Pagination state
+const PG = {
+    competitors: { page: 1, perPage: 15, total: 0 },
+    alerts:      { page: 1, perPage: 20, total: 0 },
+    history:     { page: 1, perPage: 10, total: 0 },
+};
+
 // ─── DOM Elements ───
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
@@ -16,8 +23,27 @@ const $$ = (sel) => document.querySelectorAll(sel);
 document.addEventListener('DOMContentLoaded', () => {
     initNavigation();
     loadDashboard();
-    loadAlerts();
+    // Don't load alerts on init — do a lightweight badge poll instead
+    refreshAlertBadge();
+    // Poll unread count every 30 seconds
+    setInterval(refreshAlertBadge, 30000);
 });
+
+// ─── Alert Badge Polling via new /api/alerts/unread-count ───
+async function refreshAlertBadge() {
+    try {
+        const res = await fetch(`${API_BASE}/api/alerts/unread-count`);
+        const data = await res.json();
+        const badge = $('#alertBadge');
+        if (badge) {
+            badge.textContent = data.count || 0;
+            badge.style.display = data.count > 0 ? 'inline' : 'none';
+        }
+        // Also update dashboard stat if visible
+        const stat = $('#activeAlerts');
+        if (stat && currentPage === 'dashboard') stat.textContent = data.count || 0;
+    } catch (e) { /* silent */ }
+}
 
 // ─── Navigation ───
 function initNavigation() {
@@ -165,74 +191,304 @@ function renderRecentAlerts(alerts) {
     `).join('');
 }
 
+// ─── Location Cascading ───
+const AREAS = {
+    'Bangalore': ['Whitefield', 'Marathahalli', 'Koramangala', 'HSR Layout', 'Indiranagar', 'Jayanagar', 'Electronic City', 'MG Road', 'BTM Layout', 'JP Nagar', 'Banashankari', 'Malleshwaram', 'Hebbal', 'Yelahanka', 'Hennur', 'K.R. Puram'],
+    'Mumbai': ['Andheri', 'Bandra', 'Juhu', 'Powai', 'Malad', 'Goregaon', 'Thane', 'Navi Mumbai'],
+    'Delhi': ['Gurgaon', 'Noida', 'Dwarka', 'Saket', 'Lajpat Nagar', 'Rohini', 'Janakpuri', 'Connaught Place'],
+    'Hyderabad': ['Gachibowli', 'Hitech City', 'Kukatpally', 'Jubilee Hills', 'Banjara Hills'],
+};
+
+$('#countryInput')?.addEventListener('change', function() {
+    const country = this.value;
+    const citySelect = $('#cityInput');
+    const areaGroup = $('#areaGroup');
+    
+    if (country === 'India') {
+        $('#cityGroup').style.display = 'block';
+        citySelect.innerHTML = `
+            <option value="">All India</option>
+            <option value="Bangalore">Bangalore</option>
+            <option value="Mumbai">Mumbai</option>
+            <option value="Delhi">Delhi</option>
+            <option value="Chennai">Chennai</option>
+            <option value="Hyderabad">Hyderabad</option>
+            <option value="Pune">Pune</option>
+            <option value="Kolkata">Kolkata</option>
+            <option value="Ahmedabad">Ahmedabad</option>
+            <option value="Jaipur">Jaipur</option>
+            <option value="Kochi">Kochi</option>
+        `;
+    } else {
+        $('#cityGroup').style.display = 'none';
+        $('#areaGroup').style.display = 'none';
+    }
+});
+
+$('#cityInput')?.addEventListener('change', function() {
+    const city = this.value;
+    const areaSelect = $('#areaInput');
+    const areaGroup = $('#areaGroup');
+    
+    if (city && AREAS[city]) {
+        areaGroup.style.display = 'block';
+        areaSelect.innerHTML = `<option value="">All ${city}</option>` + 
+            AREAS[city].map(area => `<option value="${area}">${area}</option>`).join('');
+    } else {
+        areaGroup.style.display = 'none';
+    }
+});
+
 // ─── Keyword Research ───
 $('#researchBtn')?.addEventListener('click', async () => {
     const keyword = $('#keywordInput').value.trim();
-    const location = $('#locationInput').value;
+    
+    // Build location string
+    let location = $('#countryInput')?.value || 'India';
+    const city = $('#cityInput')?.value;
+    const area = $('#areaInput')?.value;
+    
+    if (city && city !== '') location = city;
+    if (area && area !== '') location = `${area}, ${city}`;
 
     if (!keyword) {
         showError('Please enter a keyword');
         return;
     }
 
+    // Get options
+    const options = {
+        includeIntent: $('#includeIntent')?.checked ?? true,
+        includeSerpFeatures: $('#includeSerpFeatures')?.checked ?? true,
+        includeContentGap: $('#includeContentGap')?.checked ?? true,
+        includeCompetitorAnalysis: true,
+        numResults: 20,
+    };
+
     try {
-        const data = await api('/api/keywords/research', {
+        const data = await api('/api/keywords/advanced-research', {
             method: 'POST',
-            body: JSON.stringify({ keyword, location }),
+            body: JSON.stringify({ keyword, location, ...options }),
         });
 
         currentKeyword = data.keyword;
-        renderResearchResults(data);
+        renderAdvancedResearchResults(data);
     } catch (err) {
         console.error('Research failed:', err);
+        showError('Research failed. Please try again.');
     }
 });
 
-function renderResearchResults(data) {
+function renderAdvancedResearchResults(data) {
     $('#researchResults').style.display = 'block';
 
-    // Overview
-    $('#searchVolume').textContent = formatNumber(data.keyword.searchVolume);
-    $('#competition').textContent = data.keyword.competition;
-    $('#competition').className = `value badge badge-${data.keyword.competition}`;
-    $('#cpc').textContent = `$${data.keyword.cpc}`;
-    $('#difficulty').textContent = `${data.keyword.difficulty}%`;
+    // Safety check for data
+    if (!data || !data.metrics) {
+        console.error('Invalid data received:', data);
+        showError('Failed to load research data. Please try again.');
+        return;
+    }
+
+    // Metrics
+    $('#searchVolume').textContent = formatNumber(data.metrics.searchVolume || 0);
+    $('#opportunityScore').textContent = (data.metrics.opportunityScore || 0) + '/100';
+    $('#opportunityScore').style.color = data.metrics.opportunityScore >= 70 ? '#10b981' : data.metrics.opportunityScore >= 40 ? '#f59e0b' : '#ef4444';
+    
+    const compClass = data.metrics.competition === 'high' ? 'danger' : data.metrics.competition === 'medium' ? 'warning' : 'success';
+    $('#competition').textContent = (data.metrics.competition || 'unknown').toUpperCase();
+    $('#competition').className = `metric-value badge-${compClass}`;
+    $('#difficulty').textContent = `${data.metrics.difficulty || 0}%`;
+
+    // CPC Range
+    if (data.metrics.cpc) {
+        $('#cpcRange').innerHTML = `
+            <span class="cpc-min">$${data.metrics.cpc.range?.min || 0}</span>
+            <span class="cpc-separator">-</span>
+            <span class="cpc-max">$${data.metrics.cpc.range?.max || 0}</span>
+        `;
+    }
+
+    // Location Display
+    if (data.location) {
+        $('#locationDisplay').innerHTML = `
+            <div class="location-breadcrumb">
+                ${data.location.country ? `<span class="location-part">${data.location.country}</span>` : ''}
+                ${data.location.state ? `<span class="location-sep"><i class="fas fa-chevron-right"></i></span><span class="location-part">${data.location.state}</span>` : ''}
+                ${data.location.city ? `<span class="location-sep"><i class="fas fa-chevron-right"></i></span><span class="location-part">${data.location.city}</span>` : ''}
+                ${data.location.area ? `<span class="location-sep"><i class="fas fa-chevron-right"></i></span><span class="location-part">${data.location.area}</span>` : ''}
+            </div>
+        `;
+    }
+
+    // Intent Analysis
+    if (data.intent) {
+        $('#intentSection').style.display = 'block';
+        const intentColors = {
+            informational: '#3b82f6',
+            navigational: '#8b5cf6',
+            commercial: '#f59e0b',
+            transactional: '#10b981'
+        };
+        const intentIcons = {
+            informational: 'fa-info-circle',
+            navigational: 'fa-compass',
+            commercial: 'fa-balance-scale',
+            transactional: 'fa-shopping-cart'
+        };
+        
+        $('#intentPrimary').textContent = data.intent.primary.toUpperCase();
+        $('#intentPrimary').style.background = intentColors[data.intent.primary] || '#6b7280';
+        $('#intentStage').textContent = `Stage: ${data.intent.stage}`;
+        $('#intentDescription').textContent = data.intent.description;
+        
+        // Intent breakdown
+        const breakdown = data.intent.breakdown;
+        $('#intentBreakdown').innerHTML = `
+            <div class="breakdown-bars">
+                ${Object.entries(breakdown).map(([type, score]) => `
+                    <div class="breakdown-item">
+                        <span class="breakdown-label">${type}</span>
+                        <div class="breakdown-bar">
+                            <div class="breakdown-fill" style="width: ${Math.min(100, score * 20)}%; background: ${intentColors[type]}"></div>
+                        </div>
+                        <span class="breakdown-score">${score}</span>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+
+    // SERP Features
+    if (data.serpFeatures) {
+        $('#serpFeaturesSection').style.display = 'block';
+        const features = data.serpFeatures.detected;
+        const featureIcons = {
+            featuredSnippet: 'fa-quote-left',
+            peopleAlsoAsk: 'fa-question-circle',
+            localPack: 'fa-map-marker-alt',
+            imagePack: 'fa-images',
+            videoResults: 'fa-video',
+            shoppingResults: 'fa-shopping-bag',
+            knowledgeGraph: 'fa-database',
+            topStories: 'fa-newspaper',
+        };
+        
+        const featuresHtml = Object.entries(features).filter(([k, v]) => v).map(([feature]) => `
+            <div class="feature-badge">
+                <i class="fas ${featureIcons[feature] || 'fa-check'}"></i>
+                <span>${feature.replace(/([A-Z])/g, ' $1').trim()}</span>
+            </div>
+        `).join('') || '<span class="no-features">No special features detected</span>';
+        
+        $('#serpFeaturesGrid').innerHTML = featuresHtml;
+        
+        const oppClass = data.serpFeatures.richResultsOpportunity === 'high' ? 'success' : data.serpFeatures.richResultsOpportunity === 'medium' ? 'warning' : 'danger';
+        $('#richOpportunity').innerHTML = `
+            <div class="opp-label">Rich Results Opportunity:</div>
+            <span class="opp-value badge-${oppClass}">${data.serpFeatures.richResultsOpportunity.toUpperCase()}</span>
+        `;
+    }
+
+    // Content Gaps
+    if (data.contentGaps) {
+        $('#contentGapSection').style.display = 'block';
+        
+        if (data.contentGaps.questionsNotAnswered?.length > 0) {
+            $('#gapQuestions').innerHTML = `
+                <h4>Questions to Answer</h4>
+                <div class="gap-questions">
+                    ${data.contentGaps.questionsNotAnswered.slice(0, 5).map(q => `<span class="tag">${q}</span>`).join('')}
+                </div>
+            `;
+        }
+        
+        if (data.contentGaps.topicsToCover?.length > 0) {
+            $('#gapTopics').innerHTML = `
+                <h4>Topics to Cover</h4>
+                <div class="gap-topics">
+                    ${data.contentGaps.topicsToCover.slice(0, 8).map(t => `<span class="tag tag-outline">${t}</span>`).join('')}
+                </div>
+            `;
+        }
+        
+        if (data.contentGaps.targetLength) {
+            $('#gapLength').innerHTML = `
+                <h4>Target Content Length</h4>
+                <p class="target-length">${data.contentGaps.targetLength}+ words</p>
+            `;
+        }
+        
+        if (data.contentGaps.missingElements?.length > 0) {
+            $('#gapElements').innerHTML = `
+                <h4>Missing Elements</h4>
+                <div class="gap-elements">
+                    ${data.contentGaps.missingElements.map(el => `
+                        <div class="element-item ${el.impact === 'high' ? 'high' : ''}">
+                            <strong>${el.element}</strong>: ${el.reason}
+                            <span class="impact-badge">${el.impact}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+    }
+
+    // Top Pages Analysis
+    if (data.topPagesAnalysis) {
+        $('#topPagesSection').style.display = 'block';
+        $('#pagesStats').innerHTML = `
+            <div class="page-stat">
+                <span class="stat-label">Avg. Word Count</span>
+                <span class="stat-value">${data.topPagesAnalysis.averageWordCount || 0}</span>
+            </div>
+            <div class="page-stat">
+                <span class="stat-label">Avg. H2 Count</span>
+                <span class="stat-value">${data.topPagesAnalysis.avgH2Count || 0}</span>
+            </div>
+        `;
+        
+        if (data.topPagesAnalysis.recommendations?.length > 0) {
+            $('#pagesRecommendations').innerHTML = data.topPagesAnalysis.recommendations.map(rec => `
+                <div class="recommendation-item ${rec.priority}">
+                    <i class="fas fa-lightbulb"></i>
+                    <span>${rec.message}</span>
+                </div>
+            `).join('');
+        }
+    }
 
     // Competitors
-    $('#competitorCount').textContent = data.competitors.length;
-    const tbody = $('#competitorsTable tbody');
-    tbody.innerHTML = data.competitors.map((comp, i) => `
-        <tr>
-            <td>${comp.position}</td>
-            <td><a href="${comp.url}" target="_blank" rel="noopener" class="domain-link">${comp.domain}</a></td>
-            <td>${truncate(comp.title, 50)}</td>
-            <td>
-                <button class="btn btn-sm btn-outline" onclick="analyzeCompetitor('${comp.url}', '${data.keyword.keyword.replace(/'/g, "\\'")}', ${comp.position})">
-                    <i class="fas fa-chart-bar"></i> Analyze
-                </button>
-            </td>
-        </tr>
-    `).join('');
+    if (data.competitors) {
+        const keywordPhrase = data.keyword || '';
+        const safeKeyword = String(keywordPhrase).replace(/'/g, "\\'");
+        $('#competitorCount').textContent = data.competitors.length;
+        const tbody = $('#competitorsTable tbody');
+        tbody.innerHTML = data.competitors.map((comp) => `
+            <tr>
+                <td>${comp.position || '-'}</td>
+                <td><a href="${comp.url || '#'}" target="_blank" rel="noopener" class="domain-link">${comp.domain || ''}</a></td>
+                <td>${truncate(comp.title || '', 50)}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline" onclick="analyzeCompetitor('${comp.url || ''}', '${safeKeyword}', ${comp.position || 0})">
+                        <i class="fas fa-chart-bar"></i> Analyze
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+    }
 
-    // Related searches - combine from multiple sources
+    // Related searches
     const relatedContainer = $('#relatedSearches');
-    const allRelated = [
-        ...(data.keyword.relatedSearches || []),
-        ...(data.relatedKeywords || []).map(r => r.keyword),
-    ];
+    const allRelated = (data.relatedKeywords || []).map(r => r.keyword || '').filter(Boolean);
     const uniqueRelated = [...new Set(allRelated)];
     
     relatedContainer.innerHTML = uniqueRelated.length > 0 
         ? uniqueRelated.map(rs => 
-            `<span class="tag" onclick="searchRelated('${rs.replace(/'/g, "\\'")}')">${rs}</span>`
+            `<span class="tag" onclick="searchRelated('${String(rs).replace(/'/g, "\\'")}')">${rs}</span>`
           ).join('')
         : '<span class="text-muted">No related searches found</span>';
     
-    // Update related count
-    const relatedCount = $('#relatedCount');
-    if (relatedCount) {
-        relatedCount.textContent = uniqueRelated.length;
-    }
+    $('#relatedCount').textContent = uniqueRelated.length;
 }
 
 function searchRelated(keyword) {
@@ -481,11 +737,15 @@ $$('.modal-close').forEach(btn => {
     });
 });
 
-// ─── Competitors Page ───
-async function loadTopCompetitors() {
+// ─── Competitors Page ─── (paginated via /api/competitors/top)
+async function loadTopCompetitors(page = 1) {
+    PG.competitors.page = page;
+    const offset = (page - 1) * PG.competitors.perPage;
     try {
-        const data = await api('/api/competitors/top?limit=20');
+        const data = await api(`/api/competitors/top?limit=${PG.competitors.perPage}&offset=${offset}`);
+        PG.competitors.total = data.total || 0;
         renderTopCompetitors(data.competitors || []);
+        renderPagination('competitorsPagination', PG.competitors, loadTopCompetitors);
     } catch (err) {
         console.error('Failed to load competitors:', err);
     }
@@ -514,30 +774,82 @@ function renderTopCompetitors(competitors) {
 }
 
 async function viewCompetitorDetail(domain) {
-    try {
-        const data = await api(`/api/competitors/${domain}`);
-        
-        $('#competitorDetail').style.display = 'block';
-        $('#competitorDomain').textContent = domain;
-        $('#competitorDA').textContent = data.domainAuthority;
-        $('#competitorKeywords').textContent = data.totalKeywords;
+    // Use the competitor analysis modal for displaying details
+    const modal = $('#competitorAnalysisModal');
+    const content = $('#competitorAnalysisContent');
+    const modalTitle = modal.querySelector('.modal-header h3');
+    if (modalTitle) modalTitle.textContent = `📊 Competitor: ${domain}`;
 
-        const tbody = $('#competitorRankingsTable tbody');
-        tbody.innerHTML = data.rankings.map(r => `
-            <tr>
-                <td>${r.keyword}</td>
-                <td>#${r.rank_position}</td>
-                <td>${formatNumber(r.search_volume)}</td>
-            </tr>
-        `).join('');
+    // Show modal immediately with loading
+    content.innerHTML = `
+        <div class="modal-loading">
+            <div class="spinner-small"></div>
+            <p>Loading competitor data...</p>
+        </div>
+    `;
+    modal.classList.add('active');
+
+    try {
+        const response = await fetch(`${API_BASE}/api/competitors/${domain}`);
+        const data = await response.json();
+
+        if (data.error) throw new Error(data.error);
+
+        const rankings = data.rankings || [];
+
+        content.innerHTML = `
+            <div class="analysis-detail">
+                <div class="modal-domain-header">
+                    <h4>${domain}</h4>
+                </div>
+                <div class="stats-grid" style="grid-template-columns: 1fr 1fr; gap:14px; margin-bottom:20px;">
+                    <div class="stat-box">
+                        <span class="label">Domain Authority</span>
+                        <span class="value">${data.domainAuthority}</span>
+                        <span class="sublabel">estimated</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="label">Total Keywords</span>
+                        <span class="value">${data.totalKeywords}</span>
+                        <span class="sublabel">ranked for</span>
+                    </div>
+                </div>
+
+                <h5 class="section-title"><i class="fas fa-list-ol"></i> Keyword Rankings</h5>
+                ${rankings.length > 0 ? `
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Keyword</th>
+                                <th>#</th>
+                                <th>Volume</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rankings.map(r => `
+                                <tr>
+                                    <td><strong>${r.keyword}</strong></td>
+                                    <td><span class="badge badge-${r.rank_position <= 3 ? 'low' : r.rank_position <= 10 ? 'medium' : 'high'}">#${r.rank_position}</span></td>
+                                    <td>${formatNumber(r.search_volume)}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                ` : '<p class="text-center text-muted">No tracked keywords yet. Research keywords to see rankings here.</p>'}
+            </div>
+        `;
     } catch (err) {
         console.error('Failed to load competitor detail:', err);
+        content.innerHTML = `
+            <div class="modal-error">
+                <i class="fas fa-exclamation-triangle"></i>
+                <h4>Failed to Load</h4>
+                <p>${err.message || 'Could not load competitor details.'}</p>
+            </div>
+        `;
     }
 }
 
-$('#closeCompetitorDetail')?.addEventListener('click', () => {
-    $('#competitorDetail').style.display = 'none';
-});
 
 // ─── Analysis Page ───
 $('#analyzeBtn')?.addEventListener('click', async () => {
@@ -606,45 +918,64 @@ function renderAnalysisResults(comparison) {
     `).join('') || '<p>No suggestions available</p>';
 }
 
-// ─── Rank Tracking ───
+// ─── Rank Tracking ─── (uses new POST /api/domains)
 $('#trackDomainBtn')?.addEventListener('click', async () => {
     const domain = $('#trackDomainInput').value.trim();
     if (!domain) {
-        showError('Please enter a domain');
+        showError('Please enter a domain to track');
         return;
     }
 
     try {
-        await api('/api/alerts/track', {
+        const result = await fetch(`${API_BASE}/api/domains`, {
             method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ domain }),
         });
-
+        const data = await result.json();
+        if (data.error) throw new Error(data.error);
         $('#trackDomainInput').value = '';
         loadTrackedDomains();
         showSuccess(`Now tracking ${domain}`);
     } catch (err) {
+        showError(`Failed to add domain: ${err.message}`);
         console.error('Failed to track domain:', err);
     }
 });
 
 async function loadTrackedDomains() {
     try {
-        const data = await api('/api/alerts/domains');
+        // Use new GET /api/domains endpoint
+        const res = await fetch(`${API_BASE}/api/domains`);
+        const data = await res.json();
         renderTrackedDomains(data.domains || []);
 
-        // Load rank history
-        const historyData = await api('/api/alerts/rank-history?days=7');
-        renderRankHistory(historyData.history || []);
+        // Load rank history with pagination
+        loadRankHistory(1);
     } catch (err) {
         console.error('Failed to load tracked domains:', err);
+    }
+}
+
+// ─── Rank History (paginated) ───
+async function loadRankHistory(page = 1) {
+    PG.history.page = page;
+    const offset = (page - 1) * PG.history.perPage;
+    try {
+        const res = await fetch(`${API_BASE}/api/alerts/rank-history?days=30&limit=${PG.history.perPage}&offset=${offset}`);
+        const data = await res.json();
+        PG.history.total = data.total || data.history?.length || 0;
+        renderRankHistory(data.history || []);
+        renderPagination('rankHistoryPagination', PG.history, loadRankHistory);
+    } catch (err) {
+        console.error('Failed to load rank history:', err);
     }
 }
 
 function renderTrackedDomains(domains) {
     const tbody = $('#trackedDomainsTable tbody');
     if (!domains.length) {
-        tbody.innerHTML = '<tr><td colspan="5" class="text-center">No domains tracked</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No domains tracked yet. Add your first domain above.</td></tr>';
         return;
     }
 
@@ -654,7 +985,10 @@ function renderTrackedDomains(domains) {
             <td>-</td>
             <td>-</td>
             <td>-</td>
-            <td>
+            <td style="display:flex;gap:6px;">
+                <button class="btn btn-sm btn-outline" onclick="viewDomainRankings('${d.domain}')">
+                    <i class="fas fa-chart-bar"></i> Rankings
+                </button>
                 <button class="btn btn-sm btn-outline" onclick="checkDomainRankings('${d.domain}')">
                     <i class="fas fa-sync"></i> Check
                 </button>
@@ -662,6 +996,7 @@ function renderTrackedDomains(domains) {
         </tr>
     `).join('');
 }
+
 
 function renderRankHistory(history) {
     const tbody = $('#rankHistoryTable tbody');
@@ -689,26 +1024,95 @@ function renderRankHistory(history) {
 async function checkDomainRankings(domain) {
     try {
         showLoading();
-        // This would trigger a manual rank check
-        showSuccess(`Checking rankings for ${domain}...`);
-        // Reload after check
-        setTimeout(() => {
+        showSuccess(`Checking rankings for ${domain}... (this may take a while)`);
+        const result = await fetch(`${API_BASE}/api/rankings/check`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ domain }),
+        });
+        const data = await result.json();
+        hideLoading();
+        if (data.error) {
+            showError(data.error);
+        } else {
+            showSuccess(`Rank check complete for ${domain}`);
             loadTrackedDomains();
-            hideLoading();
-        }, 5000);
+        }
     } catch (err) {
         hideLoading();
         console.error('Rank check failed:', err);
+        showError('Rank check failed. Please try again.');
     }
 }
 
-// ─── Alerts Page ───
-async function loadAlerts() {
+// ─── View Domain Rankings (uses new GET /api/rankings/:domain) ───
+async function viewDomainRankings(domain) {
+    const modal = $('#competitorAnalysisModal');
+    const content = $('#competitorAnalysisContent');
+    const modalTitle = modal.querySelector('.modal-header h3');
+    if (modalTitle) modalTitle.textContent = `📈 Rankings: ${domain}`;
+
+    content.innerHTML = `<div class="modal-loading"><div class="spinner-small"></div><p>Loading rankings...</p></div>`;
+    modal.classList.add('active');
+
     try {
-        const data = await api('/api/alerts?limit=50');
-        renderAlerts(data.alerts || []);
-        
-        // Update badge
+        const res = await fetch(`${API_BASE}/api/rankings/${encodeURIComponent(domain)}`);
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        const rankings = data.rankings || [];
+
+        content.innerHTML = `
+            <div class="analysis-detail">
+                <div class="modal-domain-header"><h4>${domain}</h4></div>
+                <div class="stats-grid" style="grid-template-columns:repeat(2,1fr);gap:14px;margin-bottom:20px;">
+                    <div class="stat-box">
+                        <span class="label">Keywords Tracked</span>
+                        <span class="value">${rankings.length}</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="label">Currently Ranking</span>
+                        <span class="value">${rankings.filter(r => r.rank_position > 0).length}</span>
+                    </div>
+                </div>
+                <h5 class="section-title"><i class="fas fa-chart-bar"></i> Current Rankings</h5>
+                ${rankings.length > 0 ? `
+                    <table class="data-table">
+                        <thead><tr><th>Keyword</th><th>Position</th><th>Volume</th></tr></thead>
+                        <tbody>
+                            ${rankings.map(r => `
+                                <tr>
+                                    <td><strong>${r.keyword}</strong></td>
+                                    <td><span class="badge badge-${r.rank_position <= 3 ? 'low' : r.rank_position <= 10 ? 'medium' : 'high'}">#${r.rank_position}</span></td>
+                                    <td>${formatNumber(r.search_volume)}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                ` : '<p class="text-center text-muted">No rankings yet. Click "Check" to run a rank check.</p>'}
+            </div>
+        `;
+    } catch (err) {
+        content.innerHTML = `<div class="modal-error"><i class="fas fa-exclamation-triangle"></i><h4>Failed to Load</h4><p>${err.message}</p></div>`;
+    }
+}
+
+// ─── Alerts Page (paginated) ───
+async function loadAlerts(page = 1) {
+    PG.alerts.page = page;
+    const offset = (page - 1) * PG.alerts.perPage;
+    try {
+        const activeFilter = document.querySelector('.filter-btn.active')?.dataset.filter || 'all';
+        const unreadParam = activeFilter === 'unread' ? '&unreadOnly=true' : '';
+        const typeParam = (activeFilter !== 'all' && activeFilter !== 'unread') ? `&type=${activeFilter}` : '';
+
+        const res = await fetch(`${API_BASE}/api/alerts?limit=${PG.alerts.perPage}&offset=${offset}${unreadParam}`);
+        const data = await res.json();
+        PG.alerts.total = data.total || 0;
+
+        renderAlerts(data.alerts || [], activeFilter);
+        renderPagination('alertsPagination', PG.alerts, loadAlerts);
+
+        // Update badge from fresh data
         const badge = $('#alertBadge');
         if (badge) {
             badge.textContent = data.unreadCount || 0;
@@ -719,24 +1123,35 @@ async function loadAlerts() {
     }
 }
 
-function renderAlerts(alerts) {
+
+function renderAlerts(alerts, activeFilter = 'all') {
     const container = $('#alertsListFull');
     if (!alerts.length) {
-        container.innerHTML = '<p class="text-center">No alerts</p>';
+        const msg = activeFilter === 'all' ? 'No alerts yet. Alerts will appear here when rank changes are detected.' : `No ${activeFilter.replace('_', ' ')} alerts.`;
+        container.innerHTML = `<p class="text-center text-muted" style="padding:40px 0">${msg}</p>`;
         return;
     }
 
-    container.innerHTML = alerts.map(alert => `
+    // Client-side type filter for types not supported server-side
+    const filtered = activeFilter === 'all' || activeFilter === 'unread'
+        ? alerts
+        : alerts.filter(a => a.alert_type === activeFilter);
+
+    container.innerHTML = filtered.map(alert => `
         <div class="alert-item ${alert.is_read ? '' : 'unread'}" data-type="${alert.alert_type}">
             <div class="alert-icon ${getAlertIconClass(alert.alert_type)}">
                 <i class="fas ${getAlertIcon(alert.alert_type)}"></i>
             </div>
             <div class="alert-content">
                 <div class="alert-message">${alert.message}</div>
-                <div class="alert-time">${formatTimeAgo(alert.created_at)}</div>
+                <div class="alert-meta">
+                    <span class="alert-time">${formatTimeAgo(alert.created_at)}</span>
+                    ${alert.keyword ? `<span class="alert-keyword">📍 ${alert.keyword}</span>` : ''}
+                    ${alert.domain ? `<span class="alert-domain">${alert.domain}</span>` : ''}
+                </div>
             </div>
             ${!alert.is_read ? `
-                <button class="btn btn-sm" onclick="markAlertRead(${alert.id})">
+                <button class="btn btn-sm btn-outline" onclick="markAlertRead(${alert.id})" title="Mark as read">
                     <i class="fas fa-check"></i>
                 </button>
             ` : ''}
@@ -744,27 +1159,21 @@ function renderAlerts(alerts) {
     `).join('');
 }
 
-// Filter alerts
+// Filter alerts — reload from server
 $$('.filter-btn').forEach(btn => {
     btn.addEventListener('click', () => {
         $$('.filter-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-
-        const filter = btn.dataset.filter;
-        $$('.alert-item').forEach(item => {
-            if (filter === 'all' || item.dataset.type === filter) {
-                item.style.display = 'flex';
-            } else {
-                item.style.display = 'none';
-            }
-        });
+        loadAlerts(1); // Reload from page 1 with new filter
     });
 });
 
+
 async function markAlertRead(id) {
     try {
-        await api(`/api/alerts/${id}/read`, { method: 'PUT' });
-        loadAlerts();
+        await fetch(`${API_BASE}/api/alerts/${id}/read`, { method: 'PUT' });
+        loadAlerts(PG.alerts.page); // Stay on current page
+        refreshAlertBadge();
     } catch (err) {
         console.error('Failed to mark alert:', err);
     }
@@ -772,13 +1181,67 @@ async function markAlertRead(id) {
 
 $('#markAllReadBtn')?.addEventListener('click', async () => {
     try {
-        await api('/api/alerts/read-all', { method: 'PUT', body: '{}' });
-        loadAlerts();
+        await fetch(`${API_BASE}/api/alerts/read-all`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+        loadAlerts(1);
+        refreshAlertBadge();
         showSuccess('All alerts marked as read');
     } catch (err) {
         console.error('Failed to mark alerts:', err);
     }
 });
+
+// ─── Pagination Helper ───
+function renderPagination(containerId, pg, loadFn) {
+    const container = $(`#${containerId}`);
+    if (!container) return;
+    
+    const totalPages = Math.ceil(pg.total / pg.perPage) || 1;
+    
+    if (!pg.total) {
+        container.innerHTML = '';
+        return;
+    }
+
+    const startItem = (pg.page - 1) * pg.perPage + 1;
+    const endItem = Math.min(pg.page * pg.perPage, pg.total);
+
+    // Always show first, last, and 2 pages around current
+    const range = new Set([1, totalPages]);
+    for (let i = Math.max(1, pg.page - 2); i <= Math.min(totalPages, pg.page + 2); i++) range.add(i);
+    const sorted = [...range].sort((a, b) => a - b);
+
+    let html = `<div class="pagination">`;
+    html += `<span class="pg-info">${startItem}–${endItem} of ${pg.total}</span>`;
+
+    // Prev button
+    html += `<button class="pg-btn" data-page="${pg.page - 1}" ${pg.page === 1 ? 'disabled' : ''}>
+        <i class="fas fa-chevron-left"></i>
+    </button>`;
+
+    let prev = 0;
+    for (const p of sorted) {
+        if (prev && p > prev + 1) html += `<span class="pg-ellipsis">…</span>`;
+        html += `<button class="pg-btn ${p === pg.page ? 'active' : ''}" data-page="${p}">${p}</button>`;
+        prev = p;
+    }
+
+    // Next button
+    html += `<button class="pg-btn" data-page="${pg.page + 1}" ${pg.page === totalPages ? 'disabled' : ''}>
+        <i class="fas fa-chevron-right"></i>
+    </button>`;
+
+    html += `</div>`;
+    container.innerHTML = html;
+
+    // Add click handlers using event delegation
+    container.onclick = (e) => {
+        const btn = e.target.closest('.pg-btn[data-page]');
+        if (btn && !btn.disabled) {
+            const newPage = parseInt(btn.dataset.page);
+            loadFn(newPage);
+        }
+    };
+}
 
 // ─── Helpers ───
 function formatNumber(num) {

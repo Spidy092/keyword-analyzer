@@ -203,24 +203,32 @@ async function competitorRoutes(fastify, options) {
 
     // ─── Get Top Competitors ───
     fastify.get('/api/competitors/top', async (request, reply) => {
-        const { limit = 20 } = request.query;
+        const { limit = 15, offset = 0 } = request.query;
 
         try {
+            // Get total count for pagination
+            const countResult = await db.query(
+                'SELECT COUNT(DISTINCT domain) as total FROM competitors'
+            );
+            const total = parseInt(countResult.rows[0].total);
+
             const result = await db.query(
                 `SELECT domain, 
                         COUNT(*) as keyword_count,
-                        AVG(rank_position) as avg_position,
+                        ROUND(AVG(rank_position)::numeric, 1) as avg_position,
                         MIN(rank_position) as best_position
                  FROM competitors
                  GROUP BY domain
                  ORDER BY keyword_count DESC
-                 LIMIT $1`,
-                [limit]
+                 LIMIT $1 OFFSET $2`,
+                [limit, offset]
             );
 
             return {
                 competitors: result.rows,
-                total: result.rows.length,
+                total,
+                limit: parseInt(limit),
+                offset: parseInt(offset),
             };
         } catch (err) {
             log.error({ err: err.message }, 'failed to get top competitors');

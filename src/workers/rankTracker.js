@@ -62,8 +62,9 @@ async function checkDomainRanking(db, domain, keyword) {
             50
         );
 
-        // Find domain in results
-        const result = serpResults.find(r => r.domain.includes(domain));
+        // Find domain in results (normalize both)
+        const targetDomain = keywordService.extractDomain(domain);
+        const result = serpResults.find(r => r.domain === targetDomain || r.domain.endsWith('.' + targetDomain));
         const newPosition = result ? result.position : 0;
 
         // Get previous ranking
@@ -298,7 +299,8 @@ async function manualRankCheck(db, domain) {
                 50
             );
 
-            const result = serpResults.find(r => r.domain.includes(domain));
+            const targetDomain = keywordService.extractDomain(domain);
+            const result = serpResults.find(r => r.domain === targetDomain || r.domain.endsWith('.' + targetDomain));
             
             results.push({
                 keyword: keyword.keyword,

@@ -1416,3 +1416,501 @@ body {
         grid-template-columns: 1fr 1fr;
     }
 }
+
+/* ─── Advanced Keyword Research ─── */
+.form-row {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+}
+
+.form-row .form-group {
+    flex: 1;
+    min-width: 150px;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    padding: 8px 12px;
+    background: var(--light);
+    border-radius: 6px;
+    font-size: 0.85rem;
+}
+
+.checkbox-label input {
+    width: 16px;
+    height: 16px;
+}
+
+/* Metrics Grid */
+.metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 15px;
+    margin-top: 15px;
+}
+
+.metric-card {
+    background: var(--light);
+    padding: 15px;
+    border-radius: 10px;
+    text-align: center;
+}
+
+.metric-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.metric-label {
+    font-size: 0.75rem;
+    color: var(--gray);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.metric-icon {
+    color: var(--primary);
+    font-size: 0.9rem;
+}
+
+.metric-value {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--dark);
+}
+
+/* Intent Analysis */
+.intent-analysis {
+    border-left: 4px solid var(--primary);
+}
+
+.intent-primary {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 10px;
+}
+
+.intent-badge {
+    padding: 8px 20px;
+    border-radius: 20px;
+    color: white;
+    font-weight: 700;
+    font-size: 0.9rem;
+}
+
+.intent-stage {
+    color: var(--gray);
+    font-size: 0.85rem;
+}
+
+.intent-description {
+    font-size: 0.9rem;
+    color: var(--gray);
+    margin-bottom: 15px;
+    line-height: 1.5;
+}
+
+.breakdown-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.breakdown-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.breakdown-label {
+    width: 120px;
+    font-size: 0.8rem;
+    color: var(--gray);
+    text-transform: capitalize;
+}
+
+.breakdown-bar {
+    flex: 1;
+    height: 8px;
+    background: var(--light);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.breakdown-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+.breakdown-score {
+    width: 30px;
+    text-align: right;
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+/* SERP Features */
+.features-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.feature-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+    border: 1px solid #bae6fd;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    color: #0369a1;
+}
+
+.feature-badge i {
+    color: var(--info);
+}
+
+.no-features {
+    color: var(--gray);
+    font-style: italic;
+}
+
+.rich-opportunity {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 15px;
+    padding: 10px 15px;
+    background: var(--light);
+    border-radius: 8px;
+}
+
+.opp-label {
+    font-size: 0.85rem;
+    color: var(--gray);
+}
+
+.opp-value {
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+/* CPC Range */
+.cpc-range {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--dark);
+    margin-top: 10px;
+}
+
+.cpc-min, .cpc-max {
+    color: var(--primary);
+}
+
+.cpc-separator {
+    color: var(--gray);
+}
+
+/* Location Display */
+.location-breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 10px;
+    font-size: 0.9rem;
+}
+
+.location-part {
+    padding: 4px 12px;
+    background: var(--light);
+    border-radius: 15px;
+}
+
+.location-sep {
+    color: var(--gray);
+    font-size: 0.7rem;
+}
+
+/* Content Gap */
+.gap-section {
+    margin-bottom: 15px;
+}
+
+.gap-section h4 {
+    font-size: 0.85rem;
+    color: var(--gray);
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.gap-questions, .gap-topics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.target-length {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--primary);
+}
+
+.gap-elements {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.element-item {
+    padding: 10px 12px;
+    background: var(--light);
+    border-radius: 6px;
+    font-size: 0.85rem;
+}
+
+.element-item.high {
+    background: #fef2f2;
+    border-left: 3px solid var(--danger);
+}
+
+.element-item strong {
+    color: var(--dark);
+}
+
+.impact-badge {
+    float: right;
+    padding: 2px 8px;
+    background: var(--gray);
+    color: white;
+    border-radius: 10px;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+}
+
+.element-item.high .impact-badge {
+    background: var(--danger);
+}
+
+/* Top Pages */
+.page-stat {
+    display: flex;
+    justify-content: space-between;
+    padding: 12px;
+    background: var(--light);
+    border-radius: 8px;
+    margin-bottom: 8px;
+}
+
+.stat-label {
+    color: var(--gray);
+    font-size: 0.85rem;
+}
+
+.stat-value {
+    font-weight: 700;
+    color: var(--dark);
+}
+
+.pages-recommendations {
+    margin-top: 15px;
+}
+
+.recommendation-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px;
+    background: #fffbeb;
+    border-radius: 8px;
+    margin-bottom: 8px;
+}
+
+.recommendation-item.high {
+    background: #fef2f2;
+}
+
+.recommendation-item i {
+    color: var(--warning);
+    margin-top: 2px;
+}
+
+.recommendation-item.high i {
+    color: var(--danger);
+}
+
+.recommendation-item span {
+    font-size: 0.85rem;
+    color: var(--dark);
+    line-height: 1.4;
+}
+
+/* Location Selectors */
+#areaGroup {
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── Page Description Banner ─── */
+.page-description {
+    border-left: 4px solid var(--primary);
+    margin-bottom: 20px;
+}
+
+.page-desc-body {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 16px 24px !important;
+}
+
+.page-desc-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    color: white;
+    flex-shrink: 0;
+}
+
+.page-desc-text {
+    font-size: 0.9rem;
+    color: var(--gray);
+    line-height: 1.6;
+}
+
+.page-desc-text strong {
+    color: var(--dark);
+}
+
+/* ─── Header Hint ─── */
+.header-hint {
+    font-size: 0.8rem;
+    color: var(--gray);
+    font-weight: 400;
+}
+
+/* ─── Text Utilities ─── */
+.text-muted {
+    color: var(--gray) !important;
+    font-size: 0.9rem;
+}
+
+.text-center {
+    text-align: center !important;
+}
+
+/* ─── Pagination ─── */
+.pagination {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 20px;
+    padding-top: 15px;
+    border-top: 1px solid var(--light);
+}
+
+.pg-info {
+    font-size: 0.85rem;
+    color: var(--gray);
+    margin-right: auto;
+}
+
+.pg-btn {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    border: 1px solid var(--light);
+    background: white;
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: var(--dark);
+    transition: all 0.2s;
+}
+
+.pg-btn:hover:not(:disabled) {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.pg-btn.active {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: white;
+}
+
+.pg-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.pg-ellipsis {
+    color: var(--gray);
+}
+
+/* ─── Alert Enhancements ─── */
+.alert-meta {
+    display: flex;
+    gap: 12px;
+    margin-top: 5px;
+    font-size: 0.75rem;
+    color: var(--gray);
+}
+
+.alert-keyword {
+    font-weight: 600;
+    color: var(--primary);
+}
+
+.alert-domain {
+    font-style: italic;
+}
+
+/* Modal Enhancements */
+.spinner-small {
+    width: 30px;
+    height: 30px;
+    border: 3px solid var(--light);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 20px auto;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.modal-loading {
+    text-align: center;
+    padding: 40px 0;
+}

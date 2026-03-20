@@ -3,6 +3,7 @@
  */
 
 const { createLogger } = require('../utils/logger');
+const keywordService = require('../services/keywordService');
 
 const log = createLogger('routes:alerts');
 
@@ -22,17 +23,18 @@ async function alertRoutes(fastify, options) {
         },
         handler: async (request, reply) => {
             const { domain } = request.body;
-
+            const normalizedDomain = keywordService.extractDomain(domain);
+            
             try {
                 await db.query(
                     `INSERT INTO my_domains (domain) VALUES ($1)
                      ON CONFLICT (domain) DO NOTHING`,
-                    [domain]
+                    [normalizedDomain]
                 );
 
                 return {
                     success: true,
-                    message: `Now tracking ${domain}`,
+                    message: `Now tracking ${normalizedDomain}`,
                 };
             } catch (err) {
                 log.error({ err: err.message }, 'failed to add domain');
@@ -58,34 +60,53 @@ async function alertRoutes(fastify, options) {
         }
     });
 
+    // ─── Get Unread Count ─── (must be before /api/alerts to avoid any prefix matching issues)
+    fastify.get('/api/alerts/unread-count', async (request, reply) => {
+        try {
+            const result = await db.query(
+                'SELECT COUNT(*) as count FROM alerts WHERE is_read = FALSE'
+            );
+            return { count: parseInt(result.rows[0].count) };
+        } catch (err) {
+            log.error({ err: err.message }, 'failed to get unread count');
+            return reply.code(500).send({ error: err.message });
+        }
+    });
+
     // ─── Get All Alerts ───
     fastify.get('/api/alerts', async (request, reply) => {
-        const { domain, unreadOnly = false, limit = 50 } = request.query;
+        const { domain, unreadOnly = false, limit = 20, offset = 0 } = request.query;
 
         try {
+            let baseConditions = [];
+            const params = [];
+
+            if (domain) {
+                baseConditions.push(`a.domain = $${params.length + 1}`);
+                params.push(domain);
+            }
+            if (unreadOnly === 'true') {
+                baseConditions.push(`a.is_read = FALSE`);
+            }
+
+            const whereClause = baseConditions.length > 0 ? 'WHERE ' + baseConditions.join(' AND ') : '';
+
+            // Total count for pagination
+            const countResult = await db.query(
+                `SELECT COUNT(*) as total FROM alerts a ${whereClause}`,
+                params
+            );
+            const total = parseInt(countResult.rows[0].total);
+
             let query = `
                 SELECT a.*, k.keyword
                 FROM alerts a
                 JOIN keywords k ON a.keyword_id = k.id
+                ${whereClause}
             `;
-            const params = [];
-            const conditions = [];
 
-            if (domain) {
-                conditions.push(`a.domain = $${params.length + 1}`);
-                params.push(domain);
-            }
-
-            if (unreadOnly === 'true') {
-                conditions.push(`a.is_read = FALSE`);
-            }
-
-            if (conditions.length > 0) {
-                query += ' WHERE ' + conditions.join(' AND ');
-            }
-
-            query += ` ORDER BY a.created_at DESC LIMIT $${params.length + 1}`;
-            params.push(limit);
+            query += ` ORDER BY a.created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+            params.push(limit, offset);
 
             const result = await db.query(query, params);
 
@@ -101,6 +122,27 @@ async function alertRoutes(fastify, options) {
             };
         } catch (err) {
             log.error({ err: err.message }, 'failed to get alerts');
+            return reply.code(500).send({ error: err.message });
+        }
+    });
+
+    // ─── Mark All as Read ─── (must be BEFORE /:id/read to avoid Fastify matching "read-all" as :id)
+    fastify.put('/api/alerts/read-all', async (request, reply) => {
+        const { domain } = request.body || {};
+
+        try {
+            if (domain) {
+                await db.query(
+                    'UPDATE alerts SET is_read = TRUE WHERE domain = $1',
+                    [domain]
+                );
+            } else {
+                await db.query('UPDATE alerts SET is_read = TRUE');
+            }
+
+            return { success: true };
+        } catch (err) {
+            log.error({ err: err.message }, 'failed to mark alerts');
             return reply.code(500).send({ error: err.message });
         }
     });
@@ -122,26 +164,7 @@ async function alertRoutes(fastify, options) {
         }
     });
 
-    // ─── Mark All as Read ───
-    fastify.put('/api/alerts/read-all', async (request, reply) => {
-        const { domain } = request.body || {};
 
-        try {
-            if (domain) {
-                await db.query(
-                    'UPDATE alerts SET is_read = TRUE WHERE domain = $1',
-                    [domain]
-                );
-            } else {
-                await db.query('UPDATE alerts SET is_read = TRUE');
-            }
-
-            return { success: true };
-        } catch (err) {
-            log.error({ err: err.message }, 'failed to mark alerts');
-            return reply.code(500).send({ error: err.message });
-        }
-    });
 
     // ─── Get Rank History ───
     fastify.get('/api/alerts/rank-history', async (request, reply) => {
@@ -240,6 +263,90 @@ async function alertRoutes(fastify, options) {
             return { success: true };
         } catch (err) {
             log.error({ err: err.message }, 'failed to delete alert');
+            return reply.code(500).send({ error: err.message });
+        }
+    });
+
+    // ─── Get My Tracked Domains (alias for /api/alerts/domains) ───
+    fastify.get('/api/domains', async (request, reply) => {
+        try {
+            const result = await db.query(
+                'SELECT * FROM my_domains ORDER BY added_at DESC'
+            );
+            return { domains: result.rows, total: result.rows.length };
+        } catch (err) {
+            log.error({ err: err.message }, 'failed to get domains');
+            return reply.code(500).send({ error: err.message });
+        }
+    });
+
+    // ─── Add Domain (alias) ───
+    fastify.post('/api/domains', {
+        schema: {
+            body: {
+                type: 'object',
+                required: ['domain'],
+                properties: {
+                    domain: { type: 'string' },
+                },
+            },
+        },
+        handler: async (request, reply) => {
+            const { domain } = request.body;
+            const normalizedDomain = keywordService.extractDomain(domain);
+            try {
+                await db.query(
+                    `INSERT INTO my_domains (domain) VALUES ($1) ON CONFLICT (domain) DO NOTHING`,
+                    [normalizedDomain]
+                );
+                return { success: true, message: `Now tracking ${normalizedDomain}` };
+            } catch (err) {
+                log.error({ err: err.message }, 'failed to add domain');
+                return reply.code(500).send({ error: err.message });
+            }
+        },
+    });
+
+    // ─── Manual Rank Check ───
+    fastify.post('/api/rankings/check', {
+        schema: {
+            body: {
+                type: 'object',
+                required: ['domain'],
+                properties: {
+                    domain: { type: 'string' },
+                },
+            },
+        },
+        handler: async (request, reply) => {
+            const { domain } = request.body;
+            try {
+                log.info({ domain }, 'manual rank check triggered');
+                const { manualRankCheck } = require('../workers/rankTracker');
+                const results = await manualRankCheck(db, domain);
+                return { success: true, domain, results };
+            } catch (err) {
+                log.error({ err: err.message }, 'manual rank check failed');
+                return reply.code(500).send({ error: err.message });
+            }
+        },
+    });
+
+    // ─── Get Domain Rankings ───
+    fastify.get('/api/rankings/:domain', async (request, reply) => {
+        const { domain } = request.params;
+        try {
+            const result = await db.query(
+                `SELECT dr.*, k.keyword, k.search_volume
+                 FROM domain_rankings dr
+                 JOIN keywords k ON dr.keyword_id = k.id
+                 WHERE dr.domain = $1
+                 ORDER BY dr.rank_position`,
+                [domain]
+            );
+            return { domain, rankings: result.rows, total: result.rows.length };
+        } catch (err) {
+            log.error({ err: err.message }, 'failed to get rankings');
             return reply.code(500).send({ error: err.message });
         }
     });

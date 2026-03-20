@@ -7,10 +7,146 @@ const { createLogger } = require('../utils/logger');
 
 const log = createLogger('routes:keywords');
 
+// ─── Supported Locations List ───
+const SUPPORTED_LOCATIONS = {
+    countries: [
+        { id: 'india', name: 'India', gl: 'in' },
+        { id: 'usa', name: 'United States', gl: 'us' },
+        { id: 'uk', name: 'United Kingdom', gl: 'gb' },
+        { id: 'canada', name: 'Canada', gl: 'ca' },
+        { id: 'australia', name: 'Australia', gl: 'au' },
+        { id: 'germany', name: 'Germany', gl: 'de' },
+        { id: 'france', name: 'France', gl: 'fr' },
+        { id: 'uae', name: 'UAE', gl: 'ae' },
+        { id: 'singapore', name: 'Singapore', gl: 'sg' },
+    ],
+    india: {
+        cities: [
+            { id: 'bangalore', name: 'Bangalore', state: 'Karnataka' },
+            { id: 'mumbai', name: 'Mumbai', state: 'Maharashtra' },
+            { id: 'delhi', name: 'Delhi/NCR', state: 'Delhi' },
+            { id: 'chennai', name: 'Chennai', state: 'Tamil Nadu' },
+            { id: 'hyderabad', name: 'Hyderabad', state: 'Telangana' },
+            { id: 'pune', name: 'Pune', state: 'Maharashtra' },
+            { id: 'kolkata', name: 'Kolkata', state: 'West Bengal' },
+            { id: 'ahmedabad', name: 'Ahmedabad', state: 'Gujarat' },
+            { id: 'jaipur', name: 'Jaipur', state: 'Rajasthan' },
+            { id: 'kochi', name: 'Kochi', state: 'Kerala' },
+        ],
+        areas: {
+            bangalore: ['Whitefield', 'Marathahalli', 'Koramangala', 'HSR Layout', 'Indiranagar', 'Jayanagar', 'Electronic City', 'MG Road', 'BTM Layout', 'JP Nagar', 'Banashankari', 'Malleshwaram', 'Hebbal', 'Yelahanka', 'Hennur', 'K.R. Puram'],
+            mumbai: ['Andheri', 'Bandra', 'Juhu', 'Powai', 'Malad', 'Goregaon', 'Thane', 'Navi Mumbai'],
+            delhi: ['Dwarka', 'Saket', 'Lajpat Nagar', 'Rohini', 'Janakpuri', 'Connaught Place', 'Gurgaon', 'Noida'],
+            hyderabad: ['Gachibowli', 'Hitech City', 'Kukatpally', 'Jubilee Hills', 'Banjara Hills'],
+        },
+    },
+};
+
 async function keywordRoutes(fastify, options) {
     const { db } = options;
 
-    // ─── Research Keyword ───
+    // ─── Get Available Locations ───
+    fastify.get('/api/locations', async (request, reply) => {
+        return {
+            success: true,
+            locations: SUPPORTED_LOCATIONS,
+        };
+    });
+
+    // ─── Advanced Keyword Research ───
+    fastify.post('/api/keywords/advanced-research', {
+        schema: {
+            body: {
+                type: 'object',
+                required: ['keyword'],
+                properties: {
+                    keyword: { type: 'string' },
+                    location: { type: 'string', default: 'India' },
+                    language: { type: 'string', default: 'en' },
+                    includeSerpFeatures: { type: 'boolean', default: true },
+                    includeIntent: { type: 'boolean', default: true },
+                    includeContentGap: { type: 'boolean', default: true },
+                    includeCompetitorAnalysis: { type: 'boolean', default: true },
+                    compareLocations: { type: 'array', items: { type: 'string' } },
+                    numResults: { type: 'integer', default: 20, maximum: 50 },
+                },
+            },
+        },
+        handler: async (request, reply) => {
+            const { 
+                keyword, 
+                location = 'India',
+                language = 'en',
+                includeSerpFeatures = true,
+                includeIntent = true,
+                includeContentGap = true,
+                includeCompetitorAnalysis = true,
+                compareLocations,
+                numResults = 20,
+            } = request.body;
+
+            try {
+                log.info({ keyword, location }, 'advanced keyword research');
+
+                const options = {
+                    location,
+                    language,
+                    includeSerpFeatures,
+                    includeIntent,
+                    includeContentGap,
+                    includeCompetitorAnalysis,
+                    numResults,
+                    compareLocations,
+                };
+
+                const result = await keywordService.advancedKeywordResearch(keyword, options);
+
+                // Store keyword in database
+                const dbResult = await db.query(
+                    `INSERT INTO keywords (keyword, location, search_volume, competition, cpc, difficulty)
+                     VALUES ($1, $2, $3, $4, $5, $6)
+                     ON CONFLICT (keyword, location) DO UPDATE SET
+                         search_volume = $3,
+                         competition = $4,
+                         cpc = $5,
+                         difficulty = $6,
+                         updated_at = NOW()
+                     RETURNING id`,
+                    [keyword, location, result.metrics.searchVolume, result.metrics.competition, result.metrics.cpc.estimated, result.metrics.difficulty]
+                );
+
+                const keywordId = dbResult.rows[0].id;
+
+                // Store competitors from SERP results
+                if (result.competitors) {
+                    for (const serp of result.competitors) {
+                        await db.query(
+                            `INSERT INTO competitors (domain, keyword_id, rank_position, url, title, description)
+                             VALUES ($1, $2, $3, $4, $5, $6)
+                             ON CONFLICT (domain, keyword_id) DO UPDATE SET
+                                 rank_position = $3,
+                                 url = $4,
+                                 title = $5,
+                                 description = $6,
+                                 discovered_at = NOW()`,
+                            [serp.domain, keywordId, serp.position, serp.url, serp.title, serp.description]
+                        );
+                    }
+                }
+
+                return {
+                    success: true,
+                    id: keywordId,
+                    ...result,
+                };
+            } catch (err) {
+                log.error({ err: err.message }, 'advanced research failed');
+                return reply.code(500).send({ error: err.message });
+            }
+        },
+    });
+
+    // ─── Research Keyword (Legacy) ───
     fastify.post('/api/keywords/research', {
         schema: {
             body: {
@@ -33,6 +169,9 @@ async function keywordRoutes(fastify, options) {
 
                 // Get SERP results
                 const serpResults = await keywordService.getSERPResults(keyword, location, 20);
+
+                // Analyze intent
+                const intent = keywordService.analyzeKeywordIntent(keyword);
 
                 // Store keyword in database
                 const result = await db.query(
@@ -79,6 +218,11 @@ async function keywordRoutes(fastify, options) {
                         cpc: volumeData.cpc,
                         difficulty: volumeData.difficulty,
                         relatedSearches: volumeData.relatedSearches || [],
+                    },
+                    intent: {
+                        primary: intent.primary,
+                        secondary: intent.secondary,
+                        stage: intent.stage,
                     },
                     relatedKeywords: suggestions.map(s => ({
                         keyword: s.keyword,
