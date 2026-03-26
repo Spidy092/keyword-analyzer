@@ -293,26 +293,20 @@ async function manualRankCheck(db, domain) {
 
     for (const keyword of keywords) {
         try {
-            const serpResults = await keywordService.getSERPResults(
-                keyword.keyword,
-                keyword.location || 'India',
-                50
-            );
+            // Use the standard check function which saves to DB
+            const result = await checkDomainRanking(db, domain, keyword);
+            results.push(result);
 
-            const targetDomain = keywordService.extractDomain(domain);
-            const result = serpResults.find(r => r.domain === targetDomain || r.domain.endsWith('.' + targetDomain));
-            
-            results.push({
-                keyword: keyword.keyword,
-                position: result ? result.position : null,
-                url: result?.url || null,
-            });
-
-            await new Promise(r => setTimeout(r, config.rankTracking.rateLimitDelay));
+            // Rate limiting pause
+            if (config.rankTracking?.rateLimitDelay) {
+                await new Promise(r => setTimeout(r, config.rankTracking.rateLimitDelay));
+            } else {
+                await new Promise(r => setTimeout(r, 1000)); // default 1s
+            }
         } catch (err) {
+            log.error({ err: err.message, keyword: keyword.keyword }, 'manual check failed for keyword');
             results.push({
                 keyword: keyword.keyword,
-                position: null,
                 error: err.message,
             });
         }

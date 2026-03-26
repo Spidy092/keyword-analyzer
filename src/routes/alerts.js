@@ -43,12 +43,21 @@ async function alertRoutes(fastify, options) {
         },
     });
 
-    // ─── Get Tracked Domains ───
+    // ─── Get Tracked Domains with Stats ───
     fastify.get('/api/alerts/domains', async (request, reply) => {
         try {
-            const result = await db.query(
-                'SELECT * FROM my_domains ORDER BY added_at DESC'
-            );
+            const result = await db.query(`
+                SELECT d.*, 
+                    (SELECT COUNT(*) FROM domain_rankings dr WHERE dr.domain = d.domain) as keyword_count,
+                    (SELECT COUNT(*) FROM rank_history rh 
+                     WHERE rh.domain = d.domain AND rh.change_direction = 'up' 
+                     AND rh.checked_at > NOW() - INTERVAL '7 days') as improved_count,
+                    (SELECT COUNT(*) FROM rank_history rh 
+                     WHERE rh.domain = d.domain AND rh.change_direction = 'down' 
+                     AND rh.checked_at > NOW() - INTERVAL '7 days') as dropped_count
+                FROM my_domains d
+                ORDER BY d.added_at DESC
+            `);
 
             return {
                 domains: result.rows,
@@ -168,7 +177,7 @@ async function alertRoutes(fastify, options) {
 
     // ─── Get Rank History ───
     fastify.get('/api/alerts/rank-history', async (request, reply) => {
-        const { domain, keywordId, days = 30 } = request.query;
+        const { domain, keywordId, days = 30, limit = 50, offset = 0 } = request.query;
 
         try {
             let query = `
@@ -191,14 +200,71 @@ async function alertRoutes(fastify, options) {
 
             query += ' ORDER BY rh.checked_at DESC';
 
+            // Count total before pagination
+            const countResult = await db.query(
+                `SELECT COUNT(*) as total FROM (${query}) sub`,
+                params
+            );
+            const total = parseInt(countResult.rows[0].total);
+
+            query += ` LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+            params.push(parseInt(limit), parseInt(offset));
+
             const result = await db.query(query, params);
 
             return {
                 history: result.rows,
-                total: result.rows.length,
+                total,
             };
         } catch (err) {
             log.error({ err: err.message }, 'failed to get rank history');
+            return reply.code(500).send({ error: err.message });
+        }
+    });
+
+    // ─── Get Current Rankings (deduplicated latest per domain+keyword) ───
+    fastify.get('/api/rankings/current', async (request, reply) => {
+        const { domain, limit = 100, offset = 0 } = request.query;
+
+        try {
+            const params = [];
+            let whereClause = '';
+
+            if (domain) {
+                params.push(domain);
+                whereClause = `WHERE dr.domain = $1`;
+            }
+
+            // Count total distinct keywords (case-insensitive and trimmed)
+            const countResult = await db.query(
+                `SELECT COUNT(DISTINCT LOWER(TRIM(k.keyword))) as total
+                 FROM domain_rankings dr
+                 JOIN keywords k ON dr.keyword_id = k.id
+                 ${whereClause}`,
+                params
+            );
+            const total = parseInt(countResult.rows[0].total);
+
+            // Fetch deduplicated current rankings (best rank per keyword text, latest check)
+            const queryParams = [...params, parseInt(limit), parseInt(offset)];
+            const result = await db.query(
+                `SELECT DISTINCT ON (LOWER(TRIM(k.keyword)))
+                        dr.domain, dr.rank_position, dr.url, dr.checked_at,
+                        k.keyword, k.search_volume, k.location
+                 FROM domain_rankings dr
+                 JOIN keywords k ON dr.keyword_id = k.id
+                 ${whereClause}
+                 ORDER BY LOWER(TRIM(k.keyword)), dr.rank_position ASC, dr.checked_at DESC
+                 LIMIT $${queryParams.length - 1} OFFSET $${queryParams.length}`,
+                queryParams
+            );
+
+            return {
+                rankings: result.rows,
+                total,
+            };
+        } catch (err) {
+            log.error({ err: err.message }, 'failed to get current rankings');
             return reply.code(500).send({ error: err.message });
         }
     });
@@ -270,9 +336,18 @@ async function alertRoutes(fastify, options) {
     // ─── Get My Tracked Domains (alias for /api/alerts/domains) ───
     fastify.get('/api/domains', async (request, reply) => {
         try {
-            const result = await db.query(
-                'SELECT * FROM my_domains ORDER BY added_at DESC'
-            );
+            const result = await db.query(`
+                SELECT d.*, 
+                    (SELECT COUNT(*) FROM domain_rankings dr WHERE dr.domain = d.domain) as keyword_count,
+                    (SELECT COUNT(*) FROM rank_history rh 
+                     WHERE rh.domain = d.domain AND rh.change_direction = 'up' 
+                     AND rh.checked_at > NOW() - INTERVAL '7 days') as improved_count,
+                    (SELECT COUNT(*) FROM rank_history rh 
+                     WHERE rh.domain = d.domain AND rh.change_direction = 'down' 
+                     AND rh.checked_at > NOW() - INTERVAL '7 days') as dropped_count
+                FROM my_domains d
+                ORDER BY d.added_at DESC
+            `);
             return { domains: result.rows, total: result.rows.length };
         } catch (err) {
             log.error({ err: err.message }, 'failed to get domains');
@@ -347,6 +422,26 @@ async function alertRoutes(fastify, options) {
             return { domain, rankings: result.rows, total: result.rows.length };
         } catch (err) {
             log.error({ err: err.message }, 'failed to get rankings');
+            return reply.code(500).send({ error: err.message });
+        }
+    });
+
+    // ─── Delete Tracked Domain ───
+    fastify.delete('/api/domains', async (request, reply) => {
+        const { domain } = request.query;
+        if (!domain) return reply.code(400).send({ error: 'domain is required' });
+
+        try {
+            log.info({ domain }, 'stopping tracking for domain');
+            // Delete from all relevant tables
+            await db.query('DELETE FROM my_domains WHERE domain = $1', [domain]);
+            await db.query('DELETE FROM domain_rankings WHERE domain = $1', [domain]);
+            await db.query('DELETE FROM rank_history WHERE domain = $1', [domain]);
+            await db.query('DELETE FROM alerts WHERE domain = $1', [domain]);
+
+            return { success: true, message: `Stopped tracking ${domain}` };
+        } catch (err) {
+            log.error({ err: err.message, domain }, 'failed to delete domain');
             return reply.code(500).send({ error: err.message });
         }
     });

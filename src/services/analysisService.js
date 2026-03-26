@@ -6,6 +6,8 @@
 
 const { createLogger } = require('../utils/logger');
 const keywordService = require('./keywordService');
+const aiService = require('./aiService');
+const { analyzeWhyCompetitorRanks } = require('./analysisService'); 
 
 const log = createLogger('analysis-service');
 
@@ -20,15 +22,21 @@ async function compareDomains(myDomain, competitorDomain, keyword, myPageData = 
         timestamp: new Date().toISOString(),
         scores: {},
         differences: {},
-        whyCompetitorRanks: [],
+        keyDifferences: [],
         suggestions: [],
     };
 
     try {
+        // Domain extraction safety (handles full URLs if pasted)
+        const myCleanDomain = keywordService.extractDomain(myDomain);
+        const compCleanDomain = keywordService.extractDomain(competitorDomain);
+
+        log.info({ myCleanDomain, compCleanDomain }, 'normalized domains for comparison');
+
         // Get domain authorities
         const [myDA, competitorDA] = await Promise.all([
-            keywordService.getDomainAuthority(myDomain),
-            keywordService.getDomainAuthority(competitorDomain),
+            keywordService.getDomainAuthority(myCleanDomain),
+            keywordService.getDomainAuthority(compCleanDomain),
         ]);
 
         comparison.scores.domainAuthority = {
@@ -43,8 +51,8 @@ async function compareDomains(myDomain, competitorDomain, keyword, myPageData = 
             comparison.scores.seo = compareSEO(myPageData, competitorPageData);
         }
 
-        // Analyze why competitor ranks
-        comparison.whyCompetitorRanks = analyzeWhyCompetitorRanks(
+        // Analyze key differences (for both sides)
+        comparison.keyDifferences = analyzeKeyDifferences(
             comparison.scores,
             myPageData,
             competitorPageData
@@ -53,13 +61,16 @@ async function compareDomains(myDomain, competitorDomain, keyword, myPageData = 
         // Generate suggestions
         comparison.suggestions = generateSuggestions(
             comparison.scores,
-            comparison.whyCompetitorRanks,
+            comparison.keyDifferences,
             myPageData,
             competitorPageData
         );
 
         // Calculate overall score
         comparison.overallScore = calculateOverallScore(comparison.scores);
+
+        // Perform AI Analysis for expert feedback
+        comparison.aiAnalysis = await aiService.analyzeComparison(comparison);
 
         return comparison;
     } catch (err) {
@@ -142,107 +153,139 @@ function compareSEO(myPage, competitorPage) {
     };
 }
 
-// ─── Analyze Why Competitor Ranks ───
-function analyzeWhyCompetitorRanks(scores, myPage, competitorPage) {
-    const reasons = [];
+// ─── Analyze Key Differences ───
+function analyzeKeyDifferences(scores, myPage, competitorPage) {
+    const differences = [];
+
+    // Helper to add difference
+    const addDiff = (factor, impact, mineScore, compScore, explanationTpl, gapUnit) => {
+        if (mineScore === compScore) return;
+        
+        const isMineBetter = mineScore > compScore;
+        const winner = isMineBetter ? 'mine' : 'competitor';
+        const gap = Math.abs(mineScore - compScore);
+        
+        // Don't add if the gap is too small to mention
+        if (factor === 'Keyword Density' && gap < 0.5) return;
+        if (factor === 'Domain Authority' && gap <= 5) return;
+        if (factor === 'Content Length' && gap < 200) return;
+        if (factor === 'Keyword Usage' && gap <= 2) return;
+        if (factor === 'SEO Optimization' && gap <= 10) return;
+
+        const explanation = explanationTpl
+            .replace('{winner}', isMineBetter ? 'Your domain' : 'The competitor')
+            .replace('{loser}', isMineBetter ? 'the competitor' : 'your domain')
+            .replace('{winScore}', isMineBetter ? mineScore : compScore)
+            .replace('{loseScore}', isMineBetter ? compScore : mineScore);
+
+        differences.push({
+            factor,
+            impact,
+            winner,
+            explanation,
+            gap: `${isMineBetter ? 'You win by' : 'Competitor leads by'} ${gap} ${gapUnit}`,
+        });
+    };
 
     // Domain Authority
-    if (scores.domainAuthority?.difference > 10) {
-        reasons.push({
-            factor: 'Domain Authority',
-            impact: 'HIGH',
-            explanation: `Competitor has DA ${scores.domainAuthority.competitor} vs your DA ${scores.domainAuthority.mine}. Higher DA = more trust from Google.`,
-            gap: `+${scores.domainAuthority.difference} DA points`,
-        });
+    if (scores.domainAuthority) {
+        addDiff('Domain Authority', 'HIGH', 
+            scores.domainAuthority.mine, 
+            scores.domainAuthority.competitor, 
+            `{winner} has DA {winScore} vs {loser}'s DA {loseScore}. Higher DA means more trust from Google.`, 
+            'DA points'
+        );
     }
 
     // Content Length
-    if (scores.content?.wordCount?.difference > 500) {
-        reasons.push({
-            factor: 'Content Length',
-            impact: 'MEDIUM',
-            explanation: `Competitor has ${scores.content.wordCount.competitor} words vs your ${scores.content.wordCount.mine} words. Longer content often ranks better for informational queries.`,
-            gap: `+${scores.content.wordCount.difference} words`,
-        });
+    if (scores.content?.wordCount) {
+        addDiff('Content Length', 'MEDIUM',
+            scores.content.wordCount.mine,
+            scores.content.wordCount.competitor,
+            `{winner} has {winScore} words vs {loser}'s {loseScore} words. Richer content often ranks better for informational queries.`,
+            'words'
+        );
     }
 
-    // Keyword Optimization
-    if (scores.content?.keywordDensity?.difference > 0.5) {
-        reasons.push({
-            factor: 'Keyword Density',
-            impact: 'MEDIUM',
-            explanation: `Competitor uses the keyword more naturally (${scores.content.keywordDensity.competitor}% vs ${scores.content.keywordDensity.mine}%). Better keyword optimization.`,
-            gap: `+${scores.content.keywordDensity.difference}% density`,
-        });
+    // Keyword Density
+    if (scores.content?.keywordDensity) {
+        addDiff('Keyword Density', 'MEDIUM',
+            scores.content.keywordDensity.mine,
+            scores.content.keywordDensity.competitor,
+            `{winner} uses the keyword more effectively ({winScore}% vs {loseScore}%). Better keyword optimization.`,
+            '% density'
+        );
     }
 
     // Exact Keyword Matches
-    if (scores.content?.exactMatches?.difference > 2) {
-        reasons.push({
-            factor: 'Keyword Usage',
-            impact: 'MEDIUM',
-            explanation: `Competitor mentions the keyword ${scores.content.exactMatches.competitor} times vs your ${scores.content.exactMatches.mine} times.`,
-            gap: `+${scores.content.exactMatches.difference} mentions`,
-        });
+    if (scores.content?.exactMatches) {
+        addDiff('Keyword Usage', 'MEDIUM',
+            scores.content.exactMatches.mine,
+            scores.content.exactMatches.competitor,
+            `{winner} mentions the keyword {winScore} times vs {loser}'s {loseScore} times.`,
+            'mentions'
+        );
     }
 
     // SEO Elements
-    if (scores.seo?.scores?.difference > 10) {
-        reasons.push({
-            factor: 'SEO Optimization',
-            impact: 'HIGH',
-            explanation: `Competitor has better on-page SEO (headings, meta tags, schema markup).`,
-            gap: `+${scores.seo.scores.difference} SEO points`,
-        });
+    if (scores.seo?.scores) {
+        addDiff('SEO Optimization', 'HIGH',
+            scores.seo.scores.mine,
+            scores.seo.scores.competitor,
+            `{winner} has better on-page SEO (headings, meta tags, schema markup) with a score of {winScore} vs {loseScore}.`,
+            'SEO points'
+        );
     }
+
+    // Specific Binary SEO Checks
+    const checkBinary = (factor, impact, myStatus, compStatus, explanationMine, explanationComp, gapMsg) => {
+        if (myStatus && !compStatus) {
+            differences.push({ factor, impact, winner: 'mine', explanation: explanationMine, gap: gapMsg });
+        } else if (compStatus && !myStatus) {
+            differences.push({ factor, impact, winner: 'competitor', explanation: explanationComp, gap: gapMsg });
+        }
+    };
 
     // H1 Tag
-    if (competitorPage?.seoElements?.hasH1 && !myPage?.seoElements?.hasH1) {
-        reasons.push({
-            factor: 'H1 Tag Missing',
-            impact: 'HIGH',
-            explanation: `Your page is missing an H1 tag. Competitor has: "${competitorPage.seoElements.h1Text}"`,
-            gap: 'Missing H1',
-        });
-    }
+    checkBinary('H1 Tag', 'HIGH', 
+        myPage?.seoElements?.hasH1, competitorPage?.seoElements?.hasH1,
+        `Your page has an H1 tag, but the competitor is missing one.`,
+        `Your page is missing an H1 tag. Competitor has: "${competitorPage?.seoElements?.h1Text}"`,
+        'H1 Tag Presence'
+    );
 
     // Meta Description
-    if (competitorPage?.seoElements?.hasMetaDescription && !myPage?.seoElements?.hasMetaDescription) {
-        reasons.push({
-            factor: 'Meta Description Missing',
-            impact: 'MEDIUM',
-            explanation: `Your page is missing a meta description. This affects click-through rate from search results.`,
-            gap: 'Missing meta description',
-        });
-    }
+    checkBinary('Meta Description', 'MEDIUM',
+        myPage?.seoElements?.hasMetaDescription, competitorPage?.seoElements?.hasMetaDescription,
+        `You have a meta description, but the competitor doesn't. This helps your click-through rate.`,
+        `Your page is missing a meta description. This affects click-through rate from search results.`,
+        'Meta Description Presence'
+    );
 
     // Schema Markup
-    if (competitorPage?.seoElements?.hasSchema && !myPage?.seoElements?.hasSchema) {
-        reasons.push({
-            factor: 'Schema Markup',
-            impact: 'MEDIUM',
-            explanation: `Competitor uses structured data (schema markup) which helps Google understand the content better.`,
-            gap: 'No schema markup',
-        });
-    }
+    checkBinary('Schema Markup', 'MEDIUM',
+        myPage?.seoElements?.hasSchema, competitorPage?.seoElements?.hasSchema,
+        `You use structured data (schema markup) which helps Google understand your content better. Competitor does not.`,
+        `Competitor uses structured data (schema markup) which helps Google understand the content better. You do not.`,
+        'Schema Markup Presence'
+    );
 
     // Internal Links
-    const compLinks = competitorPage?.seoElements?.internalLinks || 0;
     const myLinks = myPage?.seoElements?.internalLinks || 0;
-    if (compLinks > myLinks + 5) {
-        reasons.push({
-            factor: 'Internal Linking',
-            impact: 'MEDIUM',
-            explanation: `Competitor has ${compLinks} internal links vs your ${myLinks}. Better internal linking helps with page authority distribution.`,
-            gap: `+${compLinks - myLinks} internal links`,
-        });
+    const compLinks = competitorPage?.seoElements?.internalLinks || 0;
+    if (Math.abs(myLinks - compLinks) > 5) {
+        addDiff('Internal Linking', 'MEDIUM',
+            myLinks, compLinks,
+            `{winner} has {winScore} internal links vs {loser}'s {loseScore}. Better internal linking helps with page authority distribution.`,
+            'internal links'
+        );
     }
 
     // Sort by impact
     const impactOrder = { HIGH: 0, MEDIUM: 1, LOW: 2 };
-    reasons.sort((a, b) => impactOrder[a.impact] - impactOrder[b.impact]);
+    differences.sort((a, b) => impactOrder[a.impact] - impactOrder[b.impact]);
 
-    return reasons;
+    return differences;
 }
 
 // ─── Generate Improvement Suggestions ───

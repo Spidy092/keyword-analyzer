@@ -471,6 +471,114 @@ body {
     color: var(--secondary);
 }
 
+/* AI Expert Box */
+.ai-expert-box {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(168, 85, 247, 0.1) 100%);
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    border-radius: 16px;
+    padding: 24px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    position: relative;
+    overflow: hidden;
+    animation: aiFadeIn 0.5s ease-out;
+    margin-bottom: 25px;
+}
+
+.ai-expert-box::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 4px;
+    height: 100%;
+    background: linear-gradient(to bottom, #6366f1, #a855f7);
+}
+
+.ai-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 15px;
+}
+
+.ai-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.ai-title i {
+    color: #6366f1;
+    font-size: 1.5rem;
+}
+
+.ai-score-badge {
+    background: rgba(99, 102, 241, 0.2);
+    padding: 6px 16px;
+    border-radius: 50px;
+    font-weight: 600;
+    color: #fff;
+    border: 1px solid rgba(99, 102, 241, 0.3);
+}
+
+.ai-score-badge span {
+    color: #6366f1;
+    font-size: 1.1rem;
+}
+
+.ai-verdict {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 0.8rem;
+    margin-bottom: 15px;
+    letter-spacing: 1px;
+}
+
+.ai-verdict.behind { background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); }
+.ai-verdict.competitive { background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); }
+.ai-verdict.dominating { background: rgba(34, 197, 94, 0.2); color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.3); }
+
+.ai-summary {
+    color: #e5e7eb;
+    font-size: 1rem;
+    line-height: 1.6;
+    margin-bottom: 15px;
+}
+
+.ai-summary strong {
+    color: #6366f1;
+    display: block;
+    margin-bottom: 5px;
+}
+
+.ai-observation {
+    background: rgba(0, 0, 0, 0.2);
+    padding: 15px;
+    border-radius: 12px;
+    border-left: 3px solid #a855f7;
+    font-style: italic;
+    color: #d1d5db;
+}
+
+.ai-observation strong {
+    color: #a855f7;
+    font-style: normal;
+    margin-right: 5px;
+}
+
+@keyframes aiFadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
 /* ─── Analysis Page ─── */
 .comparison-grid {
     display: grid;
@@ -510,32 +618,60 @@ body {
 
 .reason-item {
     padding: 16px;
-    border-left: 4px solid var(--warning);
-    background: rgba(245, 158, 11, 0.05);
     margin-bottom: 12px;
-    border-radius: 0 8px 8px 0;
+    border-radius: 8px;
+    border: 1px solid var(--gray-light);
 }
 
-.reason-item.high {
-    border-left-color: var(--danger);
-    background: rgba(239, 68, 68, 0.05);
+.reason-item.winner-mine {
+    border-left: 4px solid var(--success);
+    background: rgba(16, 185, 129, 0.05);
+}
+
+.reason-item.winner-competitor {
+    border-left: 4px solid var(--warning);
+    background: rgba(245, 158, 11, 0.05);
+}
+
+/* Winner Badge */
+.winner-badge {
+    font-size: 0.75rem;
+    padding: 4px 8px;
+    border-radius: 12px;
+    margin-left: 8px;
+    font-weight: 600;
+}
+
+.winner-badge.mine {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--success);
+}
+
+.winner-badge.competitor {
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--warning);
 }
 
 .reason-item .factor {
     font-weight: 600;
-    margin-bottom: 4px;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
 }
 
 .reason-item .explanation {
     color: var(--gray);
-    font-size: 0.9rem;
+    font-size: 0.95rem;
+    margin-bottom: 6px;
 }
 
 .reason-item .gap {
-    margin-top: 8px;
-    font-weight: 500;
-    color: var(--danger);
+    font-weight: 600;
+    font-size: 0.9rem;
 }
+
+.reason-item.winner-mine .gap { color: var(--success); }
+.reason-item.winner-competitor .gap { color: var(--warning); }
 
 /* ─── Suggestions List ─── */
 .suggestions-list {

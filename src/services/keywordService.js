@@ -845,11 +845,24 @@ async function getDomainAuthority(domain) {
 
 // ─── Extract Domain from URL ───
 function extractDomain(url) {
+    if (!url) return '';
     try {
-        const urlObj = new URL(url);
-        return urlObj.hostname.replace('www.', '');
+        let cleanUrl = url.trim().toLowerCase();
+        if (!cleanUrl.startsWith('http')) {
+            cleanUrl = 'https://' + cleanUrl;
+        }
+        const urlObj = new URL(cleanUrl);
+        let host = urlObj.hostname;
+        if (host.startsWith('www.')) host = host.substring(4);
+        
+        // Basic validation: ensure host has at least one dot and no trailing colon
+        if (host.includes('.') && !host.endsWith(':')) {
+            return host;
+        }
+        return url; // fallback to original if weird
     } catch {
-        return url;
+        // Fallback for non-URL strings like "example.com"
+        return url.replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0];
     }
 }
 

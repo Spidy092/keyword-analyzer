@@ -36,6 +36,16 @@ module.exports = {
             dailyLimit: 33000,
             url: 'https://openpagerank.com/api/v1.0/getPageRank',
         },
+        openRouter: {
+            key: process.env.OPENROUTER_API_KEY,
+            url: 'https://openrouter.ai/api/v1/chat/completions',
+            model: 'stepfun/step-3.5-flash:free',
+        },
+        groq: {
+            key: process.env.GROQ_API_KEY,
+            url: 'https://api.groq.com/openai/v1/chat/completions',
+            model: 'llama-3.3-70b-versatile',
+        },
     },
 
     // ─── Server ───

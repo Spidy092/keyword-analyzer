@@ -89,7 +89,9 @@ function navigateTo(page) {
         analysis: 'Compare & Analyze',
         tracking: 'Rank Tracking',
         alerts: 'Alerts',
+        onpage: 'On-Page SEO Analyzer',
     };
+
     $('#pageTitle').textContent = titles[page] || page;
 
     // Load page data
@@ -99,7 +101,9 @@ function navigateTo(page) {
         case 'competitors': loadTopCompetitors(); break;
         case 'tracking': loadTrackedDomains(); break;
         case 'alerts': loadAlerts(); break;
+        case 'onpage': break;
     }
+
 }
 
 // ─── API Helper ───
@@ -852,17 +856,40 @@ async function viewCompetitorDetail(domain) {
 
 
 // ─── Analysis Page ───
+const cleanDomain = (input) => {
+    try {
+        if (!input) return '';
+        if (input.includes('://')) {
+            return new URL(input).hostname.replace('www.', '');
+        }
+        if (input.includes('/')) {
+            return input.split('/')[0].replace('www.', '');
+        }
+        return input.replace('www.', '');
+    } catch (e) {
+        return input;
+    }
+};
+
 $('#analyzeBtn')?.addEventListener('click', async () => {
-    const myDomain = $('#myDomainInput').value.trim();
-    const competitorDomain = $('#competitorDomainInput').value.trim();
+    const myDomainRaw = $('#myDomainInput').value.trim();
+    const competitorDomainRaw = $('#competitorDomainInput').value.trim();
     const keyword = $('#analysisKeywordInput').value.trim();
     const myUrl = $('#myUrlInput').value.trim();
     const competitorUrl = $('#competitorUrlInput').value.trim();
 
-    if (!myDomain || !competitorDomain || !keyword) {
+    if (!myDomainRaw || !competitorDomainRaw || !keyword) {
         showError('Please fill in all required fields');
         return;
     }
+
+    // Auto-clean domains
+    const myDomain = cleanDomain(myDomainRaw);
+    const competitorDomain = cleanDomain(competitorDomainRaw);
+    
+    // Update inputs to show cleaned version
+    $('#myDomainInput').value = myDomain;
+    $('#competitorDomainInput').value = competitorDomain;
 
     try {
         const data = await api('/api/analysis/compare', {
@@ -879,28 +906,49 @@ $('#analyzeBtn')?.addEventListener('click', async () => {
 function renderAnalysisResults(comparison) {
     $('#analysisResults').style.display = 'block';
 
+    // AI Insight Section (NEW)
+    const aiInsight = $('#aiInsight');
+    if (aiInsight && comparison.aiAnalysis) {
+        const ai = comparison.aiAnalysis;
+        aiInsight.innerHTML = `
+            <div class="ai-expert-box">
+                <div class="ai-header">
+                    <div class="ai-title"><i class="fas fa-robot"></i> AI Expert Insight</div>
+                    <div class="ai-score-badge">Expert Score: <span>${ai.aiScore}/100</span></div>
+                </div>
+                <div class="ai-verdict ${ai.verdict.toLowerCase()}">Verdict: ${ai.verdict}</div>
+                <div class="ai-summary"><strong>Strategy:</strong> ${ai.strategicSummary}</div>
+                <div class="ai-observation"><strong>Observation:</strong> ${ai.keyObservation}</div>
+            </div>
+        `;
+        aiInsight.style.display = 'block';
+    }
+
     // Comparison grid
     const grid = $('#comparisonGrid');
     grid.innerHTML = `
         <div class="comparison-item">
             <div class="domain">${comparison.myDomain}</div>
             <div class="score mine">${comparison.scores?.domainAuthority?.mine || '-'}</div>
-            <div class="label">Domain Authority</div>
+            <div class="label">OpenPageRank (DA)</div>
         </div>
         <div class="comparison-item">
             <div class="domain">${comparison.competitorDomain}</div>
             <div class="score competitor">${comparison.scores?.domainAuthority?.competitor || '-'}</div>
-            <div class="label">Domain Authority</div>
+            <div class="label">OpenPageRank (DA)</div>
         </div>
     `;
 
-    // Reasons
+    // Differences
     const reasonsList = $('#reasonsList');
-    reasonsList.innerHTML = (comparison.whyCompetitorRanks || []).map(reason => `
-        <div class="reason-item ${reason.impact.toLowerCase()}">
-            <div class="factor">${reason.factor}</div>
-            <div class="explanation">${reason.explanation}</div>
-            <div class="gap">Gap: ${reason.gap}</div>
+    reasonsList.innerHTML = (comparison.keyDifferences || []).map(diff => `
+        <div class="reason-item winner-${diff.winner}">
+            <div class="factor">
+                ${diff.factor} 
+                <span class="winner-badge ${diff.winner}">${diff.winner === 'mine' ? '✅ Your Advantage' : '⚠️ Competitor Advantage'}</span>
+            </div>
+            <div class="explanation">${diff.explanation}</div>
+            <div class="gap">${diff.gap}</div>
         </div>
     `).join('') || '<p>No significant differences found</p>';
 
@@ -948,28 +996,47 @@ async function loadTrackedDomains() {
         // Use new GET /api/domains endpoint
         const res = await fetch(`${API_BASE}/api/domains`);
         const data = await res.json();
-        renderTrackedDomains(data.domains || []);
+        const domains = data.domains || [];
+        renderTrackedDomains(domains);
 
-        // Load rank history with pagination
-        loadRankHistory(1);
+        // Populate domain filter dropdown
+        populateRankDomainFilter(domains);
+
+        // Load current rankings (deduplicated) for all domains
+        loadCurrentRankings(1);
     } catch (err) {
         console.error('Failed to load tracked domains:', err);
     }
 }
 
-// ─── Rank History (paginated) ───
-async function loadRankHistory(page = 1) {
+// ─── Populate Domain Filter for Rank Table ───
+function populateRankDomainFilter(domains) {
+    const sel = $('#rankDomainFilter');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">All Domains</option>' +
+        domains.map(d => `<option value="${d.domain}">${d.domain}</option>`).join('');
+}
+
+// ─── Current Rankings (deduplicated, paginated) ───
+async function loadCurrentRankings(page = 1) {
     PG.history.page = page;
     const offset = (page - 1) * PG.history.perPage;
+    const domainFilter = $('#rankDomainFilter')?.value || '';
+    const domainParam = domainFilter ? `&domain=${encodeURIComponent(domainFilter)}` : '';
     try {
-        const res = await fetch(`${API_BASE}/api/alerts/rank-history?days=30&limit=${PG.history.perPage}&offset=${offset}`);
+        const res = await fetch(`${API_BASE}/api/rankings/current?limit=${PG.history.perPage}${domainParam}&offset=${offset}`);
         const data = await res.json();
-        PG.history.total = data.total || data.history?.length || 0;
-        renderRankHistory(data.history || []);
-        renderPagination('rankHistoryPagination', PG.history, loadRankHistory);
+        PG.history.total = data.total || 0;
+        renderCurrentRankings(data.rankings || []);
+        renderPagination('rankHistoryPagination', PG.history, loadCurrentRankings);
     } catch (err) {
-        console.error('Failed to load rank history:', err);
+        console.error('Failed to load current rankings:', err);
     }
+}
+
+// kept for backward compat (alerts page history still uses this)
+async function loadRankHistory(page = 1) {
+    return loadCurrentRankings(page);
 }
 
 function renderTrackedDomains(domains) {
@@ -981,16 +1048,27 @@ function renderTrackedDomains(domains) {
 
     tbody.innerHTML = domains.map(d => `
         <tr>
-            <td class="domain">${d.domain}</td>
-            <td>-</td>
-            <td>-</td>
-            <td>-</td>
+            <td class="domain"><strong>${d.domain}</strong></td>
+            <td>${d.keyword_count || 0}</td>
+            <td>
+                <span style="color:var(--secondary);font-weight:600;">
+                    <i class="fas fa-arrow-up"></i> ${d.improved_count || 0}
+                </span>
+            </td>
+            <td>
+                <span style="color:var(--danger);font-weight:600;">
+                    <i class="fas fa-arrow-down"></i> ${d.dropped_count || 0}
+                </span>
+            </td>
             <td style="display:flex;gap:6px;">
-                <button class="btn btn-sm btn-outline" onclick="viewDomainRankings('${d.domain}')">
-                    <i class="fas fa-chart-bar"></i> Rankings
+                <button class="btn btn-sm btn-outline" onclick="viewDomainRankings('${d.domain}')" title="View Rankings">
+                    <i class="fas fa-chart-bar"></i>
                 </button>
-                <button class="btn btn-sm btn-outline" onclick="checkDomainRankings('${d.domain}')">
-                    <i class="fas fa-sync"></i> Check
+                <button class="btn btn-sm btn-outline" onclick="checkDomainRankings('${d.domain}')" title="Check Rankings">
+                    <i class="fas fa-sync"></i>
+                </button>
+                <button class="btn btn-sm btn-outline text-danger" onclick="deleteTrackedDomain('${d.domain}')" title="Delete Domain">
+                    <i class="fas fa-trash"></i>
                 </button>
             </td>
         </tr>
@@ -998,28 +1076,34 @@ function renderTrackedDomains(domains) {
 }
 
 
-function renderRankHistory(history) {
+function renderCurrentRankings(rankings) {
     const tbody = $('#rankHistoryTable tbody');
-    if (!history.length) {
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center">No rank history</td></tr>';
+    if (!rankings.length) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No rankings yet. Add a domain and click "Check" to start tracking.</td></tr>';
         return;
     }
 
-    tbody.innerHTML = history.map(h => `
+    tbody.innerHTML = rankings.map(r => `
         <tr>
-            <td>${h.keyword}</td>
-            <td class="domain">${h.domain}</td>
-            <td>${h.previous_rank > 0 ? '#' + h.previous_rank : '-'}</td>
-            <td>${h.rank_position > 0 ? '#' + h.rank_position : '-'}</td>
             <td>
-                <span class="badge badge-${getChangeClass(h.change_direction)}">
-                    ${getChangeIcon(h.change_direction)} ${h.change_direction}
-                </span>
+                <strong>${r.keyword}</strong>
+                ${r.location ? `<div class="text-muted" style="font-size:0.75rem;"><i class="fas fa-map-marker-alt" style="font-size:0.7rem;"></i> ${r.location}</div>` : ''}
             </td>
-            <td>${formatTimeAgo(h.checked_at)}</td>
+            <td class="domain">
+                <a href="https://${r.domain}" target="_blank" rel="noopener" class="domain-link">${r.domain}</a>
+            </td>
+            <td>
+                ${r.rank_position > 0
+                    ? `<span class="badge badge-${r.rank_position <= 3 ? 'low' : r.rank_position <= 10 ? 'medium' : 'high'}">#${r.rank_position}</span>`
+                    : '<span class="text-muted">-</span>'}
+            </td>
+            <td>${formatTimeAgo(r.checked_at)}</td>
         </tr>
     `).join('');
 }
+
+// backward compat alias
+function renderRankHistory(history) { renderCurrentRankings(history); }
 
 async function checkDomainRankings(domain) {
     try {
@@ -1358,4 +1442,27 @@ function showToast(message, type = 'info') {
 function removeToast(toast) {
     toast.classList.add('removing');
     toast.addEventListener('animationend', () => toast.remove());
+}
+
+async function deleteTrackedDomain(domain) {
+    if (!confirm(`Are you sure you want to stop tracking ${domain}? This will delete all ranking history for this domain.`)) {
+        return;
+    }
+
+    try {
+        const res = await fetch(`${API_BASE}/api/domains?domain=${encodeURIComponent(domain)}`, {
+            method: 'DELETE'
+        });
+        const data = await res.json();
+        
+        if (data.success) {
+            showSuccess(data.message);
+            loadTrackedDomains();
+        } else {
+            showError(data.error || 'Failed to delete domain');
+        }
+    } catch (err) {
+        console.error('Failed to delete domain:', err);
+        showError('Network error while deleting domain');
+    }
 }

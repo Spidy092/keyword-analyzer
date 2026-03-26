@@ -17,6 +17,8 @@ const keywordRoutes = require('./src/routes/keywords');
 const competitorRoutes = require('./src/routes/competitors');
 const analysisRoutes = require('./src/routes/analysis');
 const alertRoutes = require('./src/routes/alerts');
+const onpageRoutes = require('./src/routes/onpage');
+
 
 const log = createLogger('server');
 
@@ -52,6 +54,8 @@ async function main() {
     await fastify.register(competitorRoutes, { db });
     await fastify.register(analysisRoutes, { db });
     await fastify.register(alertRoutes, { db });
+    await fastify.register(onpageRoutes, { db });
+
 
     // ─── 4. Dashboard Route ───
     fastify.get('/', async (request, reply) => {
